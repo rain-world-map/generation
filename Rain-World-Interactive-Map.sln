@@ -1,0 +1,53 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33205.214
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{E24C65DC-7377-472B-9ABA-BC803B73C61A}") = "Rain-World-Interactive-Map", ".", "{61CB4DE6-187D-4D77-8B9C-1DE2B989D3D1}"
+	ProjectSection(WebsiteProperties) = preProject
+		TargetFrameworkMoniker = ".NETFramework,Version%3Dv4.0"
+		Debug.AspNetCompiler.VirtualPath = "/localhost_54012"
+		Debug.AspNetCompiler.PhysicalPath = "..\RW-Map\"
+		Debug.AspNetCompiler.TargetPath = "PrecompiledWeb\localhost_54012\"
+		Debug.AspNetCompiler.Updateable = "true"
+		Debug.AspNetCompiler.ForceOverwrite = "true"
+		Debug.AspNetCompiler.FixedNames = "false"
+		Debug.AspNetCompiler.Debug = "True"
+		Release.AspNetCompiler.VirtualPath = "/localhost_54012"
+		Release.AspNetCompiler.PhysicalPath = "..\RW-Map\"
+		Release.AspNetCompiler.TargetPath = "PrecompiledWeb\localhost_54012\"
+		Release.AspNetCompiler.Updateable = "true"
+		Release.AspNetCompiler.ForceOverwrite = "true"
+		Release.AspNetCompiler.FixedNames = "false"
+		Release.AspNetCompiler.Debug = "False"
+		VWDPort = "54012"
+		SlnRelativePath = "..\RW-Map\"
+	EndProjectSection
+EndProject
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "Rain-World-Interactive-Map", "Rain-World-Interactive-Map.pyproj", "{6EDC94E9-0E30-4059-94F2-9D6B13F101E1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapExporter", "MapExporter\MapExporter.csproj", "{B77EFD1D-F354-4F6E-8448-B104A6ED45DA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{61CB4DE6-187D-4D77-8B9C-1DE2B989D3D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{61CB4DE6-187D-4D77-8B9C-1DE2B989D3D1}.Release|Any CPU.ActiveCfg = Debug|Any CPU
+		{61CB4DE6-187D-4D77-8B9C-1DE2B989D3D1}.Release|Any CPU.Build.0 = Debug|Any CPU
+		{6EDC94E9-0E30-4059-94F2-9D6B13F101E1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6EDC94E9-0E30-4059-94F2-9D6B13F101E1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B77EFD1D-F354-4F6E-8448-B104A6ED45DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B77EFD1D-F354-4F6E-8448-B104A6ED45DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B77EFD1D-F354-4F6E-8448-B104A6ED45DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B77EFD1D-F354-4F6E-8448-B104A6ED45DA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {EBFF42D2-4371-4761-BB9B-58E56A38B6DB}
+	EndGlobalSection
+EndGlobal

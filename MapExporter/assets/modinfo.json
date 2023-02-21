@@ -1,0 +1,10 @@
+﻿{
+  "id": "map-exporter",
+  "name": "Map Exporter",
+  "version": "1.0.0",
+  "authors": "Henpemaz",
+  "description": "Gets screenshots for Rain World Interactive Map",
+  "requirements": [],
+  "requirements_names": [],
+  "checksum_override_version": false
+}
