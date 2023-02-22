@@ -17,7 +17,7 @@ namespace MapExporter;
 sealed class MapExporter : BaseUnityPlugin
 {
     // Config
-    static readonly string captureSpecific = "White;CC"; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
+    static readonly string captureSpecific = null; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
     static readonly string exportFolderName = "export"; // Drops all screenshots in `Rain World/export` folder
 
     readonly Dictionary<string, int[]> blacklistedCams = new()
@@ -29,7 +29,18 @@ sealed class MapExporter : BaseUnityPlugin
 
     public void OnEnable()
     {
+        On.RainWorld.Update += RainWorld_Update1;
         On.RainWorld.Start += RainWorld_Start; // "FUCK compatibility just run my hooks" - love you too henpemaz
+    }
+
+    private void RainWorld_Update1(On.RainWorld.orig_Update orig, RainWorld self)
+    {
+        try {
+            orig(self);
+        }
+        catch (System.Exception e) {
+            Logger.LogError(e);
+        }
     }
 
     private void RainWorld_Start(On.RainWorld.orig_Start orig, RainWorld self)

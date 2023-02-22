@@ -22,11 +22,7 @@ The currently tracked things from the game are:
 
 The immediate to-do list for this project is:
 - place icons for the most common room tags like "shelter", "scavoutpost" and "swarmroom"
-- shelters filterable by difficulty
 - in-room shortcuts
-- karma for gates
-- read and add placed-objects
-    - popcorn, fruit, placed spears, the relevant stuff
-    - pealrs and echos 
+- icons for pearls and unlock tokens
 
 If you wish to contribute, hmu on Discord!
