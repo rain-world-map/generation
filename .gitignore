@@ -5,4 +5,5 @@
 .vs/
 obj/
 bin/
-export/
+py-input/
+py-output/

@@ -10,7 +10,7 @@ This project consists of three parts:
 
 To generate assets for the game:
 1. Install MapExporter,  run the game, and let the mod do its thing. The game will close when MapExporter is finished.
-2. After the game closes, copy the whole `exports` folder and place it next to `generateGeoJSON.py`.
+2. After the game closes, copy the contents of the `exports` folder into a new folder called `py-input`, which should be next to `generateGeoJSON.py`.
 3. Run `generateGeoJSON.py`.
 
 The currently tracked things from the game are:

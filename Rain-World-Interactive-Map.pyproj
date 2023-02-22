@@ -20,9 +20,6 @@
     <VisualStudioVersion Condition=" '$(VisualStudioVersion)' == '' ">10.0</VisualStudioVersion>
   </PropertyGroup>
   <ItemGroup>
-    <Content Include="config.json" />
-  </ItemGroup>
-  <ItemGroup>
     <Compile Include="generateGeoJSON.py" />
   </ItemGroup>
   <ItemGroup>

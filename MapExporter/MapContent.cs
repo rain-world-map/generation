@@ -20,12 +20,12 @@ sealed class MapContent : IJsonObject
     List<Color> sccolors;
     private HashSet<string> worldSpawns;
 
-    public MapContent(World world, IList<AbstractRoom> includedRooms)
+    public MapContent(World world)
     {
         acronym = world.name;
         name = NameOfRegion(world);
 
-        rooms = (from r in includedRooms select new RoomEntry(r.name)).ToDictionary(e => e.roomName, e => e);
+        rooms = new Dictionary<string, RoomEntry>() { ["offscreen"] = new("offscreen") };
         connections = new List<ConnectionEntry>();
 
         fgcolors = new List<Color>();
@@ -56,11 +56,6 @@ sealed class MapContent : IJsonObject
 
         fakeDevUi.game = null;
         fakeMapPage.owner = null;
-
-        foreach (var room in rooms)
-        {
-            if(!room.Value.everParsed) { Debug.LogError("Room " + room.Key + " doesn't have map data"); }
-        }
 
         LoadSpawns(world);
     }
@@ -99,10 +94,43 @@ sealed class MapContent : IJsonObject
 
     public void UpdateRoom(Room room)
     {
+        rooms[room.abstractRoom.name] = new(room.abstractRoom.name);
         rooms[room.abstractRoom.name].UpdateEntry(room);
     }
 
-    class RoomEntry : IJsonObject
+    private string NameOfRegion(World world)
+    {
+        return Region.GetRegionFullName(world.region.name, world.game.StoryCharacter);
+    }
+
+    public Dictionary<string, object> ToJson()
+    {
+        return new Dictionary<string, object>()
+        {
+            { "name", name },
+            { "acronym", acronym },
+            { "rooms", rooms },
+            { "connections", connections },
+            { "fgcolors" , (from s in fgcolors select  vec2arr((Vector3)(Vector4)s)).ToList()},
+            { "bgcolors" , (from s in bgcolors select  vec2arr((Vector3)(Vector4)s)).ToList()},
+            { "sccolors" , (from s in sccolors select  vec2arr((Vector3)(Vector4)s)).ToList()},
+            { "spawns", worldSpawns.ToArray()},
+        };
+    }
+
+    internal void LogPalette(RoomPalette currentPalette)
+    {
+        // get sky color and fg color (px 00 and 07)
+        Color fg = currentPalette.texture.GetPixel(0, 0);
+        Color bg = currentPalette.texture.GetPixel(0, 7);
+        Color sc = currentPalette.shortCutSymbol;
+        fgcolors.Add(fg);
+        bgcolors.Add(bg);
+        sccolors.Add(sc);
+
+    }
+
+    sealed class RoomEntry : IJsonObject
     {
         public string roomName;
 
@@ -175,8 +203,7 @@ sealed class MapContent : IJsonObject
         }
     }
 
-
-    class ConnectionEntry : IJsonObject
+    sealed class ConnectionEntry : IJsonObject
     {
         public string roomA;
         public string roomB;
@@ -221,37 +248,5 @@ sealed class MapContent : IJsonObject
             if (rooms.TryGetValue(sname, out RoomEntry room)) room.ParseEntry(s);
             if (sname == "Connection") connections.Add(new ConnectionEntry(s));
         }
-    }
-
-    private string NameOfRegion(World world)
-    {
-        return Region.GetRegionFullName(world.region.name, world.game.StoryCharacter);
-    }
-
-    public Dictionary<string, object> ToJson()
-    {
-        return new Dictionary<string, object>()
-        {
-            { "name", name },
-            { "acronym", acronym },
-            { "rooms", rooms },
-            { "connections", connections },
-            { "fgcolors" , (from s in fgcolors select  vec2arr((Vector3)(Vector4)s)).ToList()},
-            { "bgcolors" , (from s in bgcolors select  vec2arr((Vector3)(Vector4)s)).ToList()},
-            { "sccolors" , (from s in sccolors select  vec2arr((Vector3)(Vector4)s)).ToList()},
-            { "spawns", worldSpawns.ToArray()},
-        };
-    }
-
-    internal void LogPalette(RoomPalette currentPalette)
-    {
-        // get sky color and fg color (px 00 and 07)
-        Color fg = currentPalette.texture.GetPixel(0, 0);
-        Color bg = currentPalette.texture.GetPixel(0, 7);
-        Color sc = currentPalette.shortCutSymbol;
-        fgcolors.Add(fg);
-        bgcolors.Add(bg);
-        sccolors.Add(sc);
-
     }
 }

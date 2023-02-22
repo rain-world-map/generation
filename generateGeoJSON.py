@@ -28,12 +28,8 @@ ofscreensize = np.array([1200,400])
 four_directions = [np.array([-1,0]),np.array([0,-1]),np.array([1,0]),np.array([0,1])]
 center_of_tile = np.array([10,10])
 
-
-with open("config.json") as config_file:
-    config = json.load(config_file)
-
-screenshots_root = config["screenshots_folder"]
-output_folder = config["output_folder"]
+screenshots_root = "./py-input"
+output_folder = "./py-output"
 
 debug_one_region = False
 optimize_geometry = True
@@ -49,10 +45,13 @@ task_export_spawn_features = True
 regions = {}
 
 for slugcat_entry in os.scandir(screenshots_root):
-    if not slugcat_entry.is_dir() or slugcat_entry.name == "cached":
+    if not slugcat_entry.is_dir():
         continue
 
-    print("Found slugcat: " + slugcat_entry.name)
+    if slugcat_entry.name == "cached":
+        print("Found cached regions")
+    else:
+        print("Found slugcat regions: " + slugcat_entry.name)
 
     for entry in os.scandir(slugcat_entry.path):
         if not entry.is_dir() or len(entry.name) != 2:
@@ -84,16 +83,13 @@ for slugcat_entry in os.scandir(screenshots_root):
             # out main map unit will be room px
             # because only that way we can have the full-res images being loaded with no scaling
 
-            ## Find 'average fg color'
-            fg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['fgcolors']))) * 255).astype(int).tolist())
-            bg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['bgcolors']))) * 255).astype(int).tolist())
-            sc_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['sccolors']))) * 255).astype(int).tolist())
-            # print(f"got fg_col {fg_col}")
-            # print(f"got bg_col {bg_col}")
-            # print(f"got sc_col {sc_col}")
-            pass # funny VS
+            ## Find 'average foreground color'
+            if slugcat_entry.name != "cached":
+                fg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['fgcolors']))) * 255).astype(int).tolist())
+                bg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['bgcolors']))) * 255).astype(int).tolist())
+                sc_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['sccolors']))) * 255).astype(int).tolist())
 
-        if task_export_features:
+        if task_export_features and slugcat_entry.name != "cached":
             features = {}
             target = os.path.join(output_folder, slugcat_entry.name, entry.name)
             if os.path.exists(os.path.join(target, "region.json")):
@@ -516,6 +512,7 @@ for slugcat_entry in os.scandir(screenshots_root):
 
                         # find overlapping rooms
                         for roomname, room in regiondata['rooms'].items():
+                            # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
                             if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat_entry.name, regiondata["acronym"], roomname + "_0.png")):
                                 continue
                             for i, camera in enumerate(room['camcoords']):
@@ -548,7 +545,11 @@ for slugcat_entry in os.scandir(screenshots_root):
                             tile = None
             print("done with tiles task")
         print("Region done! " + entry.name)
-    print("Slugcat done! " + slugcat_entry.name)
+
+    if slugcat_entry.name == "cached":
+        print("Cache done!")
+    else:
+        print("Slugcat done! " + slugcat_entry.name)
 
 print("Done!")
 print(json.dumps(regions))

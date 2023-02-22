@@ -293,7 +293,7 @@ sealed class MapExporter : BaseUnityPlugin
         // ok game loaded I suppose
         game.cameras[0].room.abstractRoom.Abstractize();
 
-        Dictionary<string, RoomSettings> cache = new();
+        Cache cache = new();
 
         if (captureSpecific != null) {
             // Capture specific region on specific slugcat
@@ -316,6 +316,12 @@ sealed class MapExporter : BaseUnityPlugin
             }
         }
 
+        if (exportFolderName != null) {
+            foreach (var cachedRegionMetadata in cache.metadata) {
+                File.WriteAllText(PathOfMetadata("cached", cachedRegionMetadata.Key), Json.Serialize(cachedRegionMetadata.Value));
+            }
+        }
+
         Logger.LogDebug("capture task done!");
         Application.Quit();
     }
@@ -325,7 +331,7 @@ sealed class MapExporter : BaseUnityPlugin
         JustMetadata = 0, Cache = 1, SpecificSlugcat = 2
     }
 
-    private System.Collections.IEnumerable CaptureRegion(Dictionary<string, RoomSettings> cache, RainWorldGame game, SlugcatStats.Name slugcat, string region)
+    private System.Collections.IEnumerable CaptureRegion(Cache cache, RainWorldGame game, SlugcatStats.Name slugcat, string region)
     {
         // load region
         if (game.overWorld.activeWorld == null || game.overWorld.activeWorld.region.name != region) {
@@ -344,13 +350,13 @@ sealed class MapExporter : BaseUnityPlugin
         // Don't image rooms not available for this slugcat
         rooms.RemoveAll(r => game.world.DisabledMapRooms.Contains(r.name));
 
-        MapContent mapContent = new(game.world, rooms);
-
-        // Don't image offscreen dens or duplicate rooms
+        // Don't image offscreen dens
         rooms.RemoveAll(r => r.offScreenDen);
 
+        MapContent mapContent = new(game.world);
+
         foreach (var room in rooms) {
-            RoomSettings cached = cache.TryGetValue(room.name, out RoomSettings c) ? c : null;
+            RoomSettings cached = cache.settings.TryGetValue(room.name, out RoomSettings c) ? c : null;
             RoomSettings roomSettings = Settings(room);
 
             CaptureMode mode;
@@ -365,11 +371,11 @@ sealed class MapExporter : BaseUnityPlugin
                 }
             }
             else {
-                cache[room.name] = roomSettings;
+                cache.settings[room.name] = roomSettings;
                 mode = CaptureMode.Cache;
             }
 
-            foreach (var step in CaptureRoom(room, mapContent, mode))
+            foreach (var step in CaptureRoom(cache, room, mapContent, mode))
                 yield return step;
         }
 
@@ -380,7 +386,7 @@ sealed class MapExporter : BaseUnityPlugin
         Logger.LogDebug("capture task done with " + region);
     }
 
-    private System.Collections.IEnumerable CaptureRoom(AbstractRoom room, MapContent mapContent, CaptureMode mode)
+    private System.Collections.IEnumerable CaptureRoom(Cache cache, AbstractRoom room, MapContent mapContent, CaptureMode mode)
     {
         var game = room.world.game;
 
@@ -426,15 +432,24 @@ sealed class MapExporter : BaseUnityPlugin
         // get to room
         while (game.cameras[0].loadingRoom != null) yield return null;
         Random.InitState(0);
+
         mapContent.UpdateRoom(room.realizedRoom);
+
+        if (mode == CaptureMode.Cache) {
+            if (!cache.metadata.TryGetValue(room.world.name, out MapContent cachedContent)) {
+                cache.metadata[room.world.name] = cachedContent = new(room.world);
+            }
+            cachedContent.UpdateRoom(room.realizedRoom);
+        }
 
         // on each camera
         for (int i = 0; i < room.realizedRoom.cameraPositions.Length; i++) {
             //Logger.LogDebug("capture task camera " + i);
             //Logger.LogDebug("capture task camera has " + room.realizedRoom.cameraPositions.Length + " positions");
             // load screen
-            Random.InitState(room.name.GetHashCode()); // allow for deterministic numbers, to make rain look less garbage
+            Random.InitState(room.name.GetHashCode()); // allow for deterministic random numbers, to make rain look less garbage
             game.cameras[0].MoveCamera(i);
+            game.cameras[0].virtualMicrophone.AllQuiet();
             while (game.cameras[0].www != null) yield return null;
             yield return null;
             yield return null; // one extra frame maybe
