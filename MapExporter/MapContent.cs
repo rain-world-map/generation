@@ -10,15 +10,14 @@ namespace MapExporter;
 
 sealed class MapContent : IJsonObject
 {
-    private readonly Dictionary<string, RoomEntry> rooms;
-    private readonly List<ConnectionEntry> connections;
-    private readonly string name;
-    private readonly string acronym;
-
-    List<Color> fgcolors;
-    List<Color> bgcolors;
-    List<Color> sccolors;
-    private HashSet<string> worldSpawns;
+    readonly Dictionary<string, RoomEntry> rooms;
+    readonly List<ConnectionEntry> connections;
+    readonly string name;
+    readonly string acronym;
+    readonly List<Color> fgcolors;
+    readonly List<Color> bgcolors;
+    readonly List<Color> sccolors;
+    readonly HashSet<string> worldSpawns;
 
     public MapContent(World world)
     {
@@ -87,10 +86,9 @@ sealed class MapContent : IJsonObject
         }
     }
 
-    static float[] vec2arr(Vector2 vec) => new float[] { vec.x, vec.y };
-    static float[] vec2arr(Vector3 vec) => new float[] { vec.x, vec.y, vec.z };
-    static int[] intvec2arr(IntVector2 vec) => new int[] { vec.x, vec.y};
-
+    static float[] Vec2arr(Vector2 vec) => new float[] { vec.x, vec.y };
+    static float[] Vec2arr(Vector3 vec) => new float[] { vec.x, vec.y, vec.z };
+    static int[] Intvec2arr(IntVector2 vec) => new int[] { vec.x, vec.y};
 
     public void UpdateRoom(Room room)
     {
@@ -111,9 +109,9 @@ sealed class MapContent : IJsonObject
             { "acronym", acronym },
             { "rooms", rooms },
             { "connections", connections },
-            { "fgcolors" , (from s in fgcolors select  vec2arr((Vector3)(Vector4)s)).ToList()},
-            { "bgcolors" , (from s in bgcolors select  vec2arr((Vector3)(Vector4)s)).ToList()},
-            { "sccolors" , (from s in sccolors select  vec2arr((Vector3)(Vector4)s)).ToList()},
+            { "fgcolors" , (from s in fgcolors select  Vec2arr((Vector3)(Vector4)s)).ToList()},
+            { "bgcolors" , (from s in bgcolors select  Vec2arr((Vector3)(Vector4)s)).ToList()},
+            { "sccolors" , (from s in sccolors select  Vec2arr((Vector3)(Vector4)s)).ToList()},
             { "spawns", worldSpawns.ToArray()},
         };
     }
@@ -138,6 +136,7 @@ sealed class MapContent : IJsonObject
         {
             this.roomName = roomName;
         }
+
         // from map txt
         public Vector2 devPos;
         public Vector2 canPos;
@@ -191,12 +190,12 @@ sealed class MapContent : IJsonObject
             return new Dictionary<string, object>()
             {
                 { "roomName", roomName },
-                { "canPos", vec2arr(canPos) },
+                { "canPos", Vec2arr(canPos) },
                 { "canLayer", canLayer },
-                { "devPos", vec2arr(devPos) },
+                { "devPos", Vec2arr(devPos) },
                 { "subregion", subregion },
-                { "cameras", cameras != null ? (from c in cameras select vec2arr(c)).ToArray() : null},
-                { "nodes", nodes != null ? (from n in nodes select intvec2arr(n)).ToArray() : null},
+                { "cameras", cameras != null ? (from c in cameras select Vec2arr(c)).ToArray() : null},
+                { "nodes", nodes != null ? (from n in nodes select Intvec2arr(n)).ToArray() : null},
                 { "size", size},
                 { "tiles", tiles},
             };
@@ -229,8 +228,8 @@ sealed class MapContent : IJsonObject
             {
                 { "roomA", roomA },
                 { "roomB", roomB },
-                { "posA", intvec2arr(posA) },
-                { "posB", intvec2arr(posB) },
+                { "posA", Intvec2arr(posA) },
+                { "posB", Intvec2arr(posB) },
                 { "dirA", dirA },
                 { "dirB", dirB },
             };

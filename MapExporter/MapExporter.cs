@@ -17,7 +17,7 @@ namespace MapExporter;
 sealed class MapExporter : BaseUnityPlugin
 {
     // Config
-    static readonly string captureSpecific = null; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
+    static readonly string captureSpecific = "White;CC"; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
     static readonly string exportFolderName = "export"; // Drops all screenshots in `Rain World/export` folder
 
     readonly Dictionary<string, int[]> blacklistedCams = new()
@@ -38,6 +38,9 @@ sealed class MapExporter : BaseUnityPlugin
         On.RainWorld.LoadSetupValues += RainWorld_LoadSetupValues;
         On.RainWorld.Update += RainWorld_Update;
         On.World.SpawnGhost += World_SpawnGhost;
+        On.GhostWorldPresence.SpawnGhost += GhostWorldPresence_SpawnGhost;
+        On.GhostWorldPresence.GhostMode_AbstractRoom_Vector2 += GhostWorldPresence_GhostMode_AbstractRoom_Vector2;
+        On.Ghost.Update += Ghost_Update;
         On.RainWorldGame.ctor += RainWorldGame_ctor;
         On.RainWorldGame.Update += RainWorldGame_Update;
         On.RainWorldGame.RawUpdate += RainWorldGame_RawUpdate;
@@ -72,6 +75,7 @@ sealed class MapExporter : BaseUnityPlugin
         Random.InitState(0);
         orig(self);
     }
+
     #region fixes
     // shortcut consistency
     private void RoomCamera_DrawUpdate(On.RoomCamera.orig_DrawUpdate orig, RoomCamera self, float timeStacker, float timeSpeed)
@@ -120,20 +124,38 @@ sealed class MapExporter : BaseUnityPlugin
             }
         }
     }
-
     // zeroes some annoying fades
     public delegate float orig_PropertyToZero(RainWorldGame self);
     public float RainWorldGame_ZeroProperty(orig_PropertyToZero _, RainWorldGame _1)
     {
         return 0f;
     }
-
-    // no ghosts
+    // spawn ghost always
     private void World_SpawnGhost(On.World.orig_SpawnGhost orig, World self)
     {
-        return;
+        self.game.rainWorld.safariMode = false;
+        orig(self);
+        self.game.rainWorld.safariMode = true;
     }
-
+    // spawn ghosts always, to show them on the map
+    private bool GhostWorldPresence_SpawnGhost(On.GhostWorldPresence.orig_SpawnGhost orig, GhostWorldPresence.GhostID ghostID, int karma, int karmaCap, int ghostPreviouslyEncountered, bool playingAsRed)
+    {
+        return true;
+    }
+    // don't let them affect nearby rooms
+    private float GhostWorldPresence_GhostMode_AbstractRoom_Vector2(On.GhostWorldPresence.orig_GhostMode_AbstractRoom_Vector2 orig, GhostWorldPresence self, AbstractRoom testRoom, Vector2 worldPos)
+    {
+        if (self.ghostRoom.name != testRoom.name) {
+            return 0f;
+        }
+        return orig(self, testRoom, worldPos);
+    }
+    // don't let them hurl us back to the karma screen
+    private void Ghost_Update(On.Ghost.orig_Update orig, Ghost self, bool eu)
+    {
+        orig(self, eu);
+        self.fadeOut = self.lastFadeOut = 0f;
+    }
     // setup == useful
     private RainWorldGame.SetupValues RainWorld_LoadSetupValues(On.RainWorld.orig_LoadSetupValues orig, bool distributionBuild)
     {
@@ -141,9 +163,6 @@ sealed class MapExporter : BaseUnityPlugin
 
         setup.loadAllAmbientSounds = false;
         setup.playMusic = false;
-        // this broke CRS somehow smh
-        //setup.loadProg = false;
-        //setup.loadGame = false;
 
         setup.cycleTimeMax = 10000;
         setup.cycleTimeMin = 10000;
@@ -151,15 +170,12 @@ sealed class MapExporter : BaseUnityPlugin
         setup.gravityFlickerCycleMin = 10000;
         setup.gravityFlickerCycleMax = 10000;
 
-
         setup.startScreen = false;
         setup.cycleStartUp = false;
-
 
         setup.player1 = false;
         setup.worldCreaturesSpawn = false;
         setup.singlePlayerChar = 0;
-
 
         return setup;
     }
