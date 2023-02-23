@@ -33,30 +33,45 @@ sealed class MapContent : IJsonObject
 
         worldSpawns = new HashSet<string>();
 
-        DevInterface.DevUI fakeDevUi = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(DevInterface.DevUI)) as DevInterface.DevUI;
-        DevInterface.MapPage fakeMapPage = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(DevInterface.MapPage)) as DevInterface.MapPage;
-        fakeMapPage.owner = fakeDevUi;
-        fakeDevUi.game = world.game;
-        fakeMapPage.filePath = string.Concat(new object[]
-        {
-                Custom.RootFolderDirectory(),
-                "World",
-                Path.DirectorySeparatorChar,
-                "Regions",
-                Path.DirectorySeparatorChar,
-                world.name,
-                Path.DirectorySeparatorChar,
-                "map_",
-                world.name,
-                ".txt"
-        });
-
-        LoadMapConfig(fakeMapPage);
-
-        fakeDevUi.game = null;
-        fakeMapPage.owner = null;
-
+        LoadMapConfig(world);
         LoadSpawns(world);
+    }
+
+    private void LoadMapConfig(World world)
+    {
+        string path = AssetManager.ResolveFilePath(
+            $"World{Path.DirectorySeparatorChar}{world.name}{Path.DirectorySeparatorChar}map_{world.name}-{world.game.GetStorySession.saveState.saveStateNumber}.txt"
+            );
+
+        if (!File.Exists(path)) {
+            path = AssetManager.ResolveFilePath(
+                $"World{Path.DirectorySeparatorChar}{world.name}{Path.DirectorySeparatorChar}map_{world.name}.txt"
+                );
+        }
+
+        if (!File.Exists(path)) {
+            MapExporter.Logger.LogWarning($"No map data for {world.game.StoryCharacter}/{world.name} at {path}");
+        }
+        else {
+            MapExporter.Logger.LogDebug($"Found map data for {world.game.StoryCharacter}/{world.name} at {path}");
+
+            string[] contents = File.ReadAllLines(path);
+
+            foreach (string s in contents) {
+                string[] split = Regex.Split(s, ": ");
+                string sname = split[0];
+
+                if (sname == "Connection") {
+                    connections.Add(new ConnectionEntry(split[1]));
+                }
+                else {
+                    if (!rooms.TryGetValue(sname, out RoomEntry room)) {
+                        rooms[sname] = room = new(sname);
+                    }
+                    room.ParseEntry(split[1]);
+                }
+            }
+        }
     }
 
     private void LoadSpawns(World world)
@@ -141,20 +156,17 @@ sealed class MapContent : IJsonObject
         public Vector2 devPos;
         public Vector2 canPos;
         public int canLayer;
-        public int subregion;
+        public string subregion;
         public bool everParsed = false;
-        public void ParseEntry(string line)
+        public void ParseEntry(string entry)
         {
-            //Debug.Log(line);
-            string[] arr = Regex.Split(line, ": ");
-            if (roomName != arr[0]) throw new Exception();
-            string[] arr2 = Regex.Split(arr[1], ",");
-            canPos.x = float.Parse(arr2[0]);
-            canPos.y = float.Parse(arr2[1]);
-            devPos.x = float.Parse(arr2[2]);
-            devPos.y = float.Parse(arr2[3]);
-            canLayer = int.Parse(arr2[4]);
-            subregion = int.Parse(arr2[5]);
+            string[] fields = Regex.Split(entry, "><");
+            canPos.x = float.Parse(fields[0]);
+            canPos.y = float.Parse(fields[1]);
+            devPos.x = float.Parse(fields[2]);
+            devPos.y = float.Parse(fields[3]);
+            canLayer = int.Parse(fields[4]);
+            subregion = fields[5];
             everParsed = true;
         }
 
@@ -211,15 +223,15 @@ sealed class MapContent : IJsonObject
         public int dirA;
         public int dirB;
 
-        public ConnectionEntry(string line)
+        public ConnectionEntry(string entry)
         {
-            string[] stuff = Regex.Split(Regex.Split(line, ": ")[1], ",");
-            roomA = stuff[0];
-            roomB = stuff[1];
-            posA = new IntVector2(int.Parse(stuff[2]), int.Parse(stuff[3]));
-            posB = new IntVector2(int.Parse(stuff[4]), int.Parse(stuff[5]));
-            dirA = int.Parse(stuff[6]);
-            dirB = int.Parse(stuff[7]);
+            string[] fields = Regex.Split(entry, ",");
+            roomA = fields[0];
+            roomB = fields[1];
+            posA = new IntVector2(int.Parse(fields[2]), int.Parse(fields[3]));
+            posB = new IntVector2(int.Parse(fields[4]), int.Parse(fields[5]));
+            dirA = int.Parse(fields[6]);
+            dirB = int.Parse(fields[7]);
         }
 
         public Dictionary<string, object> ToJson()
@@ -233,19 +245,6 @@ sealed class MapContent : IJsonObject
                 { "dirA", dirA },
                 { "dirB", dirB },
             };
-        }
-    }
-
-    public void LoadMapConfig(DevInterface.MapPage fakeMapPage)
-    {
-        if (!File.Exists(fakeMapPage.filePath)) return;
-        Debug.Log("reading map file: " + fakeMapPage.filePath);
-        string[] contents = File.ReadAllLines(fakeMapPage.filePath);
-        foreach (var s in contents)
-        {
-            string sname = Regex.Split(s, ": ")[0];
-            if (rooms.TryGetValue(sname, out RoomEntry room)) room.ParseEntry(s);
-            if (sname == "Connection") connections.Add(new ConnectionEntry(s));
         }
     }
 }

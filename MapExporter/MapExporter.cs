@@ -6,6 +6,7 @@ using UnityEngine;
 using MonoMod.RuntimeDetour;
 using System.Collections.Generic;
 using BepInEx;
+using BepInEx.Logging;
 
 #pragma warning disable CS0618 // Type or member is obsolete
 [assembly: SecurityPermission(SecurityAction.RequestMinimum, SkipVerification = true)]
@@ -18,7 +19,7 @@ sealed class MapExporter : BaseUnityPlugin
 {
     // Config
     static readonly string captureSpecific = null; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
-    static readonly string exportFolderName = "export"; // Drops all screenshots in `Rain World/export` folder
+    static readonly bool screenshots = false;
 
     readonly Dictionary<string, int[]> blacklistedCams = new()
     {
@@ -27,8 +28,11 @@ sealed class MapExporter : BaseUnityPlugin
         { "SL_C01", new int[]{4,5} }, // crescent order or will break
     };
 
+    public static new ManualLogSource Logger;
+
     public void OnEnable()
     {
+        Logger = base.Logger;
         On.RainWorld.Update += RainWorld_Update1;
         On.RainWorld.Start += RainWorld_Start; // "FUCK compatibility just run my hooks" - love you too henpemaz
     }
@@ -292,7 +296,7 @@ sealed class MapExporter : BaseUnityPlugin
 
     string PathOfRegion(string slugcat, string region)
     {
-        return Path.Combine(Custom.LegacyRootFolderDirectory(), exportFolderName, slugcat.ToLower(), region.ToLower());
+        return Path.Combine(Custom.LegacyRootFolderDirectory(), "export", slugcat.ToLower(), region.ToLower());
     }
 
     string PathOfMetadata(string slugcat, string region)
@@ -343,10 +347,8 @@ sealed class MapExporter : BaseUnityPlugin
             }
         }
 
-        if (exportFolderName != null) {
-            foreach (var cachedRegionMetadata in cache.metadata) {
-                File.WriteAllText(PathOfMetadata("cached", cachedRegionMetadata.Key), Json.Serialize(cachedRegionMetadata.Value));
-            }
+        foreach (var cachedRegionMetadata in cache.metadata) {
+            File.WriteAllText(PathOfMetadata("cached", cachedRegionMetadata.Key), Json.Serialize(cachedRegionMetadata.Value));
         }
 
         Logger.LogDebug("capture task done!");
@@ -366,7 +368,7 @@ sealed class MapExporter : BaseUnityPlugin
             game.GetStorySession.saveStateNumber = slugcat;
             game.GetStorySession.saveState.saveStateNumber = slugcat;
             game.overWorld.LoadWorld(region, slugcat, false);
-            Logger.LogDebug("capture task loaded " + region);
+            Logger.LogDebug($"capture task loaded {region} on {slugcat}");
         }
 
         Directory.CreateDirectory(PathOfRegion(slugcat.value, region));
@@ -408,9 +410,7 @@ sealed class MapExporter : BaseUnityPlugin
                 yield return step;
         }
 
-        if (exportFolderName != null) {
-            File.WriteAllText(PathOfMetadata(slugcat.value, region), Json.Serialize(mapContent));
-        }
+        File.WriteAllText(PathOfMetadata(slugcat.value, region), Json.Serialize(mapContent));
 
         Logger.LogDebug("capture task done with " + region);
     }
@@ -425,8 +425,8 @@ sealed class MapExporter : BaseUnityPlugin
             _ => null,
         };
 
-        // Don't bother if file is already captured (extremely helpful for debugging)
-        if (File.Exists(filename(0))) {
+        // Don't bother if file is already captured and we're capturing screenshots (extremely helpful for debugging)
+        if (File.Exists(filename(0)) && screenshots) {
             yield break;
         }
 
@@ -483,7 +483,7 @@ sealed class MapExporter : BaseUnityPlugin
             yield return null;
             yield return null; // one extra frame maybe
                                // fire!
-            if (exportFolderName != null && mode != CaptureMode.JustMetadata) {
+            if (mode != CaptureMode.JustMetadata && screenshots) {
                 ScreenCapture.CaptureScreenshot(filename(i));
             }
 

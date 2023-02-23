@@ -35,7 +35,7 @@ debug_one_region = False
 optimize_geometry = True
 skip_to = None
 
-task_export_tiles = True
+task_export_tiles = False
 task_export_features = True
 task_export_room_features = True
 task_export_connection_features = True
@@ -585,3 +585,4 @@ for slugcat_entry in os.scandir(screenshots_root):
 
 print("Done!")
 print(json.dumps(regions))
+s = input()
