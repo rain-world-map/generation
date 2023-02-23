@@ -44,23 +44,21 @@ task_export_spawn_features = True
 
 regions = {}
 
-for slugcat_entry in os.scandir(screenshots_root):
-    if not slugcat_entry.is_dir():
-        continue
-
-    if slugcat_entry.name == "cached":
+def do_slugcat(slugcat: str):
+    if slugcat == "cached":
         print("Found cached regions")
     else:
-        print("Found slugcat regions: " + slugcat_entry.name)
+        print("Found slugcat regions: " + slugcat)
 
-    for entry in os.scandir(slugcat_entry.path):
+    for entry in os.scandir(os.path.join(screenshots_root, slugcat)):
+        st = skip_to
         if not entry.is_dir() or len(entry.name) != 2:
             continue
         if debug_one_region and entry.name != "SU":
             continue
-        if skip_to != None and entry.name != skip_to:
+        if st != None and entry.name != st:
             continue
-        skip_to = None
+        st = None
 
         print("Found region: " + entry.name)
         with open(os.path.join(entry.path, "metadata.json")) as metadata:
@@ -84,14 +82,13 @@ for slugcat_entry in os.scandir(screenshots_root):
             # because only that way we can have the full-res images being loaded with no scaling
 
             ## Find 'average foreground color'
-            if slugcat_entry.name != "cached":
-                fg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['fgcolors']))) * 255).astype(int).tolist())
-                bg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['bgcolors']))) * 255).astype(int).tolist())
-                sc_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['sccolors']))) * 255).astype(int).tolist())
+            fg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['fgcolors']))) * 255).astype(int).tolist())
+            bg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['bgcolors']))) * 255).astype(int).tolist())
+            sc_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['sccolors']))) * 255).astype(int).tolist())
 
-        if task_export_features and slugcat_entry.name != "cached":
+        if task_export_features and slugcat != "cached":
             features = {}
-            target = os.path.join(output_folder, slugcat_entry.name, entry.name)
+            target = os.path.join(output_folder, slugcat, entry.name)
             if os.path.exists(os.path.join(target, "region.json")):
                 with open(os.path.join(target, "region.json"), 'r') as myin:
                     features = json.load(myin)
@@ -352,15 +349,23 @@ for slugcat_entry in os.scandir(screenshots_root):
                 for spawnentry in regiondata["spawns"]:
                     if not spawnentry.strip():
                         continue
-                    #print("processing " + spawnentry)
+
                     if spawnentry.startswith("("):
-                        # TODO slugbase support
-                        difficulties = [str(s.strip()) for s in spawnentry[1:spawnentry.index(")")].split(",") if s.strip()]
+                        # the slugcats for which this creature spawns, in lowercase
+                        slugcats_with_creature = [str(s.strip()).lower() for s in spawnentry[1:spawnentry.index(")")].split(",") if s.strip()]
+                        
+                        if len(slugcats_with_creature) > 0:
+                            # X- means the creature spawns for anyone EXCEPT the listed slugcats. skip if current slugcat is one of those
+                            if slugcats_with_creature[0].startswith("X-"):
+                                slugcats_with_creature[0] = slugcats_with_creature[0].removeprefix("X-")
+                                if slugcat.lower() in slugcats_with_creature:
+                                    continue
+                            # creature spawns for listed slugcats. skip if current slugcat isn't one of those
+                            elif slugcat.lower() not in slugcats_with_creature:
+                                continue
+
                         spawnentry = spawnentry[spawnentry.index(")")+1:]
-                        #print("found filter for " + str(difficulties))
-                        #print("remaining line: " + spawnentry)
-                    else:
-                        difficulties = []
+
                     arr = spawnentry.split(" : ")
                     if arr[0] == "LINEAGE":
                         if len(arr) < 3 :
@@ -382,7 +387,6 @@ for slugcat_entry in os.scandir(screenshots_root):
                                 continue
 
                         spawn = {}
-                        spawn["difficulties"] = difficulties
                         spawn["is_lineage"] = True
                         creature_arr = arr[3].split(", ")
                         spawn["lineage"] = [creature.split("-")[0] for creature in creature_arr]
@@ -401,7 +405,6 @@ for slugcat_entry in os.scandir(screenshots_root):
                         room_name = arr[0]
                         for creature_desc in creature_arr:
                             spawn = {}
-                            spawn["difficulties"] = difficulties
                             spawn["is_lineage"] = False
                             den_index,spawn["creature"], *attr = creature_desc.split("-",2)
 
@@ -449,7 +452,7 @@ for slugcat_entry in os.scandir(screenshots_root):
 
                 print("creatures task done!")
 
-            target = os.path.join(output_folder, slugcat_entry.name, entry.name)
+            target = os.path.join(output_folder, slugcat, entry.name)
             if not os.path.exists(target):
                 os.makedirs(target, exist_ok=True)
             with open(os.path.join(target, "region.json"), 'w') as myout:
@@ -478,7 +481,7 @@ for slugcat_entry in os.scandir(screenshots_root):
             for zoomlevel in range(0, -8, -1):
                 print(f"zoomlevel {zoomlevel}")
 
-                target = os.path.join(output_folder, slugcat_entry.name, entry.name, str(zoomlevel))
+                target = os.path.join(output_folder, slugcat, entry.name, str(zoomlevel))
                 if not os.path.exists(target):
                     os.makedirs(target, exist_ok=True)
 
@@ -510,10 +513,27 @@ for slugcat_entry in os.scandir(screenshots_root):
 
                         currentcamsize = camsize*mulfac
 
+                        need_to_save_tile = False
+                        for roomname, room in regiondata['rooms'].items():
+                            # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
+                            if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
+                                continue
+                            for i, camera in enumerate(room['camcoords']):
+                                camcoords = camera * mulfac # roomcoords + (camoffset + np.array(camera)) * mulfac # room px to zoom level
+
+                                if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
+                                    need_to_save_tile = True
+                                    break
+                            if need_to_save_tile:
+                                 break
+
+                        if not need_to_save_tile:
+                            break
+
                         # find overlapping rooms
                         for roomname, room in regiondata['rooms'].items():
                             # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
-                            if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat_entry.name, regiondata["acronym"], roomname + "_0.png")):
+                            if room['cameras'] == None:
                                 continue
                             for i, camera in enumerate(room['camcoords']):
                                 camcoords = camera * mulfac # roomcoords + (camoffset + np.array(camera)) * mulfac # room px to zoom level
@@ -522,7 +542,11 @@ for slugcat_entry in os.scandir(screenshots_root):
                                     if tile == None:
                                         tile = Image.new('RGB', tuple(tile_size.tolist()), fg_col)
                                     #draw
-                                    camimg = Image.open(os.path.join(screenshots_root, slugcat_entry.name, regiondata["acronym"], roomname + f"_{i}.png"))
+                                    if os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
+                                        camimg = Image.open(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + f"_{i}.png"))
+                                    else:
+                                        camimg = Image.open(os.path.join(screenshots_root, "cached", regiondata["acronym"], roomname + f"_{i}.png"))
+
                                     if mulfac != 1:
                                         # scale cam
                                         camresized = camimg.resize(tuple(np.array([camimg.width*mulfac,camimg.height*mulfac], dtype=int)))
@@ -546,10 +570,18 @@ for slugcat_entry in os.scandir(screenshots_root):
             print("done with tiles task")
         print("Region done! " + entry.name)
 
-    if slugcat_entry.name == "cached":
+    if slugcat == "cached":
         print("Cache done!")
     else:
-        print("Slugcat done! " + slugcat_entry.name)
+        print("Slugcat done! " + slugcat)
+
+# Do cache first always
+do_slugcat("cached")
+
+# Run thru every scug
+for slugcat_entry in os.scandir(screenshots_root):
+    if slugcat_entry.is_dir() and slugcat_entry.name != "cached":
+        do_slugcat(slugcat_entry.name)
 
 print("Done!")
 print(json.dumps(regions))

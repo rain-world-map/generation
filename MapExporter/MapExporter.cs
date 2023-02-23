@@ -247,7 +247,7 @@ sealed class MapExporter : BaseUnityPlugin
         }
         else {
             manager.rainWorld.safariSlugcat = SlugcatStats.Name.White;
-            manager.rainWorld.safariRegion = "CC";
+            manager.rainWorld.safariRegion = "SU";
         }
 
         orig(self, manager);
@@ -383,7 +383,9 @@ sealed class MapExporter : BaseUnityPlugin
         MapContent mapContent = new(game.world);
 
         foreach (var room in rooms) {
-            RoomSettings cached = cache.settings.TryGetValue(room.name, out RoomSettings c) ? c : null;
+            string cacheKey = $"{region}#{room.name}";
+
+            RoomSettings cached = cache.settings.TryGetValue(cacheKey, out RoomSettings c) ? c : null;
             RoomSettings roomSettings = Settings(room);
 
             CaptureMode mode;
@@ -398,7 +400,7 @@ sealed class MapExporter : BaseUnityPlugin
                 }
             }
             else {
-                cache.settings[room.name] = roomSettings;
+                cache.settings[cacheKey] = roomSettings;
                 mode = CaptureMode.Cache;
             }
 
@@ -487,6 +489,9 @@ sealed class MapExporter : BaseUnityPlugin
 
             // palette and colors
             mapContent.LogPalette(game.cameras[0].currentPalette);
+            if (mode == CaptureMode.Cache) {
+                cache.metadata[room.world.name].LogPalette(game.cameras[0].currentPalette);
+            }
             yield return null; // one extra frame after ??
         }
         Random.InitState(0);

@@ -4,6 +4,6 @@ namespace MapExporter;
 
 sealed class Cache
 {
-    public readonly Dictionary<string, MapContent> metadata = new();   // region name -> map content
-    public readonly Dictionary<string, RoomSettings> settings = new(); // room name -> settings
+    public readonly Dictionary<string, MapContent> metadata = new();   // "{region name}" -> map content
+    public readonly Dictionary<string, RoomSettings> settings = new(); // "{region name}#{room name}" -> settings
 }

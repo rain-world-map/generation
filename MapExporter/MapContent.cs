@@ -159,7 +159,7 @@ sealed class MapContent : IJsonObject
         }
 
         // from room
-        public Vector2[] cameras;
+        public Vector2[] cameras; // TODO: can this cause issues if it's not the same as the cache?
         private int[] size;
         private int[,][] tiles;
         private IntVector2[] nodes;

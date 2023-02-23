@@ -11,7 +11,7 @@ This project consists of three parts:
 To generate assets for the game:
 1. Install MapExporter,  run the game, and let the mod do its thing. The game will close when MapExporter is finished.
 2. After the game closes, copy the contents of the `exports` folder into a new folder called `py-input`, which should be next to `generateGeoJSON.py`.
-3. Run `generateGeoJSON.py`.
+3. Run `generateGeoJSON.py`. When it finishes, copy the contents of the `py-output` folder into the `slugcats` folder in the `rain-world-map.github.io` repository. And that's it!
 
 The currently tracked things from the game are:
 - room placement from the dev-map
