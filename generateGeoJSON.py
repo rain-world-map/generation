@@ -1,9 +1,8 @@
 import os
 import json, geojson
-import re, collections
 import statistics
 import colorsys
-import numpy as np, numpy.linalg as la
+import numpy as np
 from PIL import Image
 
 # making python more pythonic smh
@@ -35,7 +34,7 @@ debug_one_region = False
 optimize_geometry = True
 skip_to = None
 
-task_export_tiles = False
+task_export_tiles = True
 task_export_features = True
 task_export_room_features = True
 task_export_connection_features = True
@@ -292,7 +291,7 @@ def do_slugcat(slugcat: str):
                     if optimize_geometry:
                         ## reduce considering all elements
                         alreadychecked = []
-                        for n in range(len(alllines)): # max iterations
+                        for _ in range(len(alllines)): # max iterations
                             touched = False
                             for lineA in alllines:
                                 for lineB in alllines:
@@ -439,7 +438,7 @@ def do_slugcat(slugcat: str):
                             else:
                                 dens[denkey] = {"room":room_name,"den":int(den_index),"spawns":[spawn]}
                 ## process dens into features
-                for key,den in dens.items():
+                for _,den in dens.items():
                     if den["room"] == "OFFSCREEN":
                         room = regiondata['offscreen']
                         dencoords = room['roomcoords'] + ofscreensize/2

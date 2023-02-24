@@ -18,8 +18,8 @@ namespace MapExporter;
 sealed class MapExporter : BaseUnityPlugin
 {
     // Config
-    static readonly string captureSpecific = null; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
-    static readonly bool screenshots = false;
+    static readonly string captureSpecific = "White;SU"; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
+    static readonly bool screenshots = true;
 
     readonly Dictionary<string, int[]> blacklistedCams = new()
     {
@@ -296,7 +296,7 @@ sealed class MapExporter : BaseUnityPlugin
 
     string PathOfRegion(string slugcat, string region)
     {
-        return Path.Combine(Custom.LegacyRootFolderDirectory(), "export", slugcat.ToLower(), region.ToLower());
+        return Directory.CreateDirectory(Path.Combine(Custom.LegacyRootFolderDirectory(), "export", slugcat.ToLower(), region.ToLower())).FullName;
     }
 
     string PathOfMetadata(string slugcat, string region)
@@ -417,18 +417,7 @@ sealed class MapExporter : BaseUnityPlugin
 
     private System.Collections.IEnumerable CaptureRoom(Cache cache, AbstractRoom room, MapContent mapContent, CaptureMode mode)
     {
-        var game = room.world.game;
-
-        string filename(int i) => mode switch {
-            CaptureMode.Cache => PathOfScreenshot("Cached", room.world.region.name, room.name, i),
-            CaptureMode.SpecificSlugcat => PathOfScreenshot(game.StoryCharacter.value, room.world.region.name, room.name, i),
-            _ => null,
-        };
-
-        // Don't bother if file is already captured and we're capturing screenshots (extremely helpful for debugging)
-        if (File.Exists(filename(0)) && screenshots) {
-            yield break;
-        }
+        RainWorldGame game = room.world.game;
 
         // load room
         game.overWorld.activeWorld.loadingRooms.Clear();
@@ -484,7 +473,9 @@ sealed class MapExporter : BaseUnityPlugin
             yield return null; // one extra frame maybe
                                // fire!
             if (mode != CaptureMode.JustMetadata && screenshots) {
-                ScreenCapture.CaptureScreenshot(filename(i));
+                string scug = mode == CaptureMode.Cache ? "cached" : game.StoryCharacter.value;
+
+                ScreenCapture.CaptureScreenshot(PathOfScreenshot(scug, room.world.name, room.name, i));
             }
 
             // palette and colors
