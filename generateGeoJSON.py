@@ -85,12 +85,129 @@ def do_slugcat(slugcat: str):
             bg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['bgcolors']))) * 255).astype(int).tolist())
             sc_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['sccolors']))) * 255).astype(int).tolist())
 
+        imaged_tiles = []
+
+        if task_export_tiles:
+            cam_min = np.array([0,0]) 
+            cam_max = np.array([0,0])
+
+            ## Find out boundaries of the image
+            for roomname, room in regiondata['rooms'].items():
+                roomcoords = room['roomcoords']
+                if room['cameras'] == None:
+                    cam_min = np.min([cam_min, roomcoords], 0)
+                    cam_max = np.max([cam_max, roomcoords + ofscreensize],0)
+                else:
+                    for camcoords in room['camcoords']:
+                        cam_min = np.min([cam_min, camcoords + camoffset],0)
+                        cam_max = np.max([cam_max, camcoords + camoffset + camsize],0)
+    
+            print(f"got cam min {cam_min}")
+            print(f"got cam max {cam_max}")
+            dim = cam_max - cam_min
+            ## Building image tiles for each zoom level
+            for zoomlevel in range(0, -8, -1):
+                print(f"zoomlevel {zoomlevel}")
+
+                target = os.path.join(output_folder, slugcat, entry.name, str(zoomlevel))
+                if not os.path.exists(target):
+                    os.makedirs(target, exist_ok=True)
+
+                mulfac = 2**zoomlevel
+                print(f"mulfac {mulfac}")
+                print(f"base image would be {dim * mulfac}")
+
+                # find bounds
+                # lower left inclusive, upper right noninclusive
+                tile_size = np.array([256,256])
+                llb_tile = np.floor(mulfac*cam_min/tile_size).astype(int)
+                urb_tile = np.ceil(mulfac*cam_max/tile_size).astype(int)
+        
+                print(f"got llb_tile {llb_tile}")
+                print(f"got urb_tile {urb_tile}")
+
+                grid_size = urb_tile - llb_tile
+                print(f"got grid_size {grid_size}")
+        
+                # Going over the grid, making images
+                for tilex in range(llb_tile[0], urb_tile[0]):
+                    for tiley in range(llb_tile[1], urb_tile[1]):
+                        # making a tile
+                        #print(f"processing {tilex}_{tiley}")
+                        current_tile = np.array([tilex,tiley])
+                        tilecoords = tile_size * current_tile
+                        tileuppercoords = tilecoords + tile_size
+                        tile = None #guard
+
+                        currentcamsize = camsize*mulfac
+
+                        need_to_save_tile = False
+                        for roomname, room in regiondata['rooms'].items():
+                            # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
+                            if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
+                                continue
+                            for i, camera in enumerate(room['camcoords']):
+                                camcoords = camera * mulfac # roomcoords + (camoffset + np.array(camera)) * mulfac # room px to zoom level
+
+                                if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
+                                    need_to_save_tile = True
+                                    break
+                            if need_to_save_tile:
+                                 break
+
+                        if not need_to_save_tile:
+                            break
+
+                        # find overlapping rooms
+                        for roomname, room in regiondata['rooms'].items():
+                            # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
+                            if room['cameras'] == None:
+                                continue
+                            for i, camera in enumerate(room['camcoords']):
+                                camcoords = camera * mulfac # roomcoords + (camoffset + np.array(camera)) * mulfac # room px to zoom level
+
+                                if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
+                                    if tile == None:
+                                        tile = Image.new('RGB', tuple(tile_size.tolist()), fg_col)
+                                    #draw
+                                    if os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
+                                        camimg = Image.open(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + f"_{i}.png"))
+                                    else:
+                                        camimg = Image.open(os.path.join(screenshots_root, "cached", regiondata["acronym"], roomname + f"_{i}.png"))
+
+                                    if mulfac != 1:
+                                        # scale cam
+                                        camresized = camimg.resize(tuple(np.array([camimg.width*mulfac,camimg.height*mulfac], dtype=int)))
+                                        camimg.close()
+                                        camimg = camresized
+
+                                    #image has flipped y, tracks off upper left corner
+                                    paste_offset = (camcoords.astype(int) + np.array([0, camimg.height], dtype=int)) - (tilecoords + np.array([0, tile_size[1]], dtype=int))
+                                    paste_offset[1] = -paste_offset[1]
+                                    # bug: despite the docs, paste requires a 4-tuble box, not a simple topleft coordinate
+                                    paste_offset = (paste_offset[0], paste_offset[1],paste_offset[0] + camimg.width, paste_offset[1] + camimg.height)
+                                    #print(f"paste_offset is {paste_offset}")
+                                    tile.paste(camimg, paste_offset)
+                                    camimg.close()
+                                
+                        if tile != None:
+                            imaged_tiles.append([tilex, -1 - tiley, zoomlevel])
+                            # done pasting rooms
+                            tile.save(os.path.join(target, f"{tilex}_{-1 - tiley}.png"), optimize=True)
+                            tile.close()
+                            tile = None
+            print("done with tiles task")
+
         if task_export_features and slugcat != "cached":
             features = {}
             target = os.path.join(output_folder, slugcat, entry.name)
             if os.path.exists(os.path.join(target, "region.json")):
                 with open(os.path.join(target, "region.json"), 'r') as myin:
                     features = json.load(myin)
+
+            # Store which tiles were imaged
+            if task_export_tiles:
+                features["imaged_tiles"] = imaged_tiles
 
             ## Colors
             features["highlightcolor"] = bg_col
@@ -458,115 +575,6 @@ def do_slugcat(slugcat: str):
                 json.dump(features,myout)
             print("done with features task")
 
-        if task_export_tiles:
-            cam_min = np.array([0,0]) 
-            cam_max = np.array([0,0])
-
-            ## Find out boundaries of the image
-            for roomname, room in regiondata['rooms'].items():
-                roomcoords = room['roomcoords']
-                if room['cameras'] == None:
-                    cam_min = np.min([cam_min, roomcoords], 0)
-                    cam_max = np.max([cam_max, roomcoords + ofscreensize],0)
-                else:
-                    for camcoords in room['camcoords']:
-                        cam_min = np.min([cam_min, camcoords + camoffset],0)
-                        cam_max = np.max([cam_max, camcoords + camoffset + camsize],0)
-    
-            print(f"got cam min {cam_min}")
-            print(f"got cam max {cam_max}")
-            dim = cam_max - cam_min
-            ## Building image tiles for each zoom level
-            for zoomlevel in range(0, -8, -1):
-                print(f"zoomlevel {zoomlevel}")
-
-                target = os.path.join(output_folder, slugcat, entry.name, str(zoomlevel))
-                if not os.path.exists(target):
-                    os.makedirs(target, exist_ok=True)
-
-                mulfac = 2**zoomlevel
-                print(f"mulfac {mulfac}")
-                print(f"base image would be {dim * mulfac}")
-
-                # find bounds
-                # lower left inclusive, upper right noninclusive
-                tile_size = np.array([256,256])
-                llb_tile = np.floor(mulfac*cam_min/tile_size).astype(int)
-                urb_tile = np.ceil(mulfac*cam_max/tile_size).astype(int)
-        
-                print(f"got llb_tile {llb_tile}")
-                print(f"got urb_tile {urb_tile}")
-
-                grid_size = urb_tile - llb_tile
-                print(f"got grid_size {grid_size}")
-        
-                # Going over the grid, making images
-                for tilex in range(llb_tile[0], urb_tile[0]):
-                    for tiley in range(llb_tile[1], urb_tile[1]):
-                        # making a tile
-                        #print(f"processing {tilex}_{tiley}")
-                        current_tile = np.array([tilex,tiley])
-                        tilecoords = tile_size * current_tile
-                        tileuppercoords = tilecoords + tile_size
-                        tile = None #guard
-
-                        currentcamsize = camsize*mulfac
-
-                        need_to_save_tile = False
-                        for roomname, room in regiondata['rooms'].items():
-                            # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
-                            if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
-                                continue
-                            for i, camera in enumerate(room['camcoords']):
-                                camcoords = camera * mulfac # roomcoords + (camoffset + np.array(camera)) * mulfac # room px to zoom level
-
-                                if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
-                                    need_to_save_tile = True
-                                    break
-                            if need_to_save_tile:
-                                 break
-
-                        if not need_to_save_tile:
-                            break
-
-                        # find overlapping rooms
-                        for roomname, room in regiondata['rooms'].items():
-                            # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
-                            if room['cameras'] == None:
-                                continue
-                            for i, camera in enumerate(room['camcoords']):
-                                camcoords = camera * mulfac # roomcoords + (camoffset + np.array(camera)) * mulfac # room px to zoom level
-
-                                if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
-                                    if tile == None:
-                                        tile = Image.new('RGB', tuple(tile_size.tolist()), fg_col)
-                                    #draw
-                                    if os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
-                                        camimg = Image.open(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + f"_{i}.png"))
-                                    else:
-                                        camimg = Image.open(os.path.join(screenshots_root, "cached", regiondata["acronym"], roomname + f"_{i}.png"))
-
-                                    if mulfac != 1:
-                                        # scale cam
-                                        camresized = camimg.resize(tuple(np.array([camimg.width*mulfac,camimg.height*mulfac], dtype=int)))
-                                        camimg.close()
-                                        camimg = camresized
-
-                                    #image has flipped y, tracks off upper left corner
-                                    paste_offset = (camcoords.astype(int) + np.array([0, camimg.height], dtype=int)) - (tilecoords + np.array([0, tile_size[1]], dtype=int))
-                                    paste_offset[1] = -paste_offset[1]
-                                    # bug: despite the docs, paste requires a 4-tuble box, not a simple topleft coordinate
-                                    paste_offset = (paste_offset[0], paste_offset[1],paste_offset[0] + camimg.width, paste_offset[1] + camimg.height)
-                                    #print(f"paste_offset is {paste_offset}")
-                                    tile.paste(camimg, paste_offset)
-                                    camimg.close()
-                                
-                        if tile != None:
-                            # done pasting rooms
-                            tile.save(os.path.join(target, f"{tilex}_{-1-tiley}.png"), optimize=True)
-                            tile.close()
-                            tile = None
-            print("done with tiles task")
         print("Region done! " + entry.name)
 
     if slugcat == "cached":
