@@ -18,7 +18,7 @@ namespace MapExporter;
 sealed class MapExporter : BaseUnityPlugin
 {
     // Config
-    static readonly string captureSpecific = "White;SU"; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
+    static readonly string captureSpecific = null; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
     static readonly bool screenshots = true;
 
     readonly Dictionary<string, int[]> blacklistedCams = new()
