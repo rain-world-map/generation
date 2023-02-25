@@ -30,6 +30,11 @@ sealed class MapExporter : BaseUnityPlugin
 
     public static new ManualLogSource Logger;
 
+    public static bool HiddenRoom(World world, string roomName)
+    {
+        return world.DisabledMapRooms.Contains(roomName) || world.game.StoryCharacter != MoreSlugcats.MoreSlugcatsEnums.SlugcatStatsName.Saint && roomName.EndsWith("SAINT");
+    }
+
     public void OnEnable()
     {
         Logger = base.Logger;
@@ -377,7 +382,7 @@ sealed class MapExporter : BaseUnityPlugin
         List<AbstractRoom> rooms = game.world.abstractRooms.ToList();
 
         // Don't image rooms not available for this slugcat
-        rooms.RemoveAll(r => game.world.DisabledMapRooms.Contains(r.name));
+        rooms.RemoveAll(r => HiddenRoom(game.world, r.name));
 
         // Don't image offscreen dens
         rooms.RemoveAll(r => r.offScreenDen);
@@ -475,9 +480,10 @@ sealed class MapExporter : BaseUnityPlugin
             yield return null; // one extra frame maybe
                                // fire!
             if (mode != CaptureMode.JustMetadata && screenshots) {
-                string scug = mode == CaptureMode.Cache ? "cached" : game.StoryCharacter.value;
+                string filename = PathOfScreenshot(mode == CaptureMode.Cache ? "cached" : game.StoryCharacter.value, room.world.name, room.name, i);
 
-                ScreenCapture.CaptureScreenshot(PathOfScreenshot(scug, room.world.name, room.name, i));
+                if (!File.Exists(filename))
+                    ScreenCapture.CaptureScreenshot(filename);
             }
 
             // palette and colors

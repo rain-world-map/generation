@@ -69,7 +69,7 @@ sealed class MapContent : IJsonObject
                 if (sname == "Connection") {
                     connections.Add(new ConnectionEntry(split[1]));
                 }
-                else {
+                else if (!MapExporter.HiddenRoom(world, sname)) {
                     GetOrCreateRoomEntry(sname).ParseEntry(split[1]);
                 }
             }
