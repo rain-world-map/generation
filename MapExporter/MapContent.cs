@@ -24,7 +24,7 @@ sealed class MapContent : IJsonObject
         acronym = world.name;
         name = NameOfRegion(world);
 
-        rooms = new Dictionary<string, RoomEntry>() { ["offscreen"] = new("offscreen") };
+        rooms = new Dictionary<string, RoomEntry>();
         connections = new List<ConnectionEntry>();
 
         fgcolors = new List<Color>();

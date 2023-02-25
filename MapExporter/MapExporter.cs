@@ -372,7 +372,7 @@ sealed class MapExporter : BaseUnityPlugin
         }
 
         Directory.CreateDirectory(PathOfRegion(slugcat.value, region));
-        Directory.CreateDirectory(PathOfRegion("Cached", region));
+        Directory.CreateDirectory(PathOfRegion("cached", region));
 
         List<AbstractRoom> rooms = game.world.abstractRooms.ToList();
 
@@ -394,14 +394,16 @@ sealed class MapExporter : BaseUnityPlugin
 
             if (cached != null) {
                 if (Identical(cached, roomSettings)) {
+                    Logger.LogDebug($"CACHE HIT  | {slugcat}/{room.name}");
                     mode = CaptureMode.JustMetadata;
                 }
                 else {
-                    Logger.LogDebug($"{room.name} on {slugcat} is different from cached room, capturing");
+                    Logger.LogDebug($"CACHE MISS | {slugcat}/{room.name}");
                     mode = CaptureMode.SpecificSlugcat;
                 }
             }
             else {
+                Logger.LogDebug($"CACHE ADD  | {slugcat}/{room.name}");
                 cache.settings[cacheKey] = roomSettings;
                 mode = CaptureMode.Cache;
             }
