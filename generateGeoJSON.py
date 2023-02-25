@@ -446,28 +446,26 @@ def do_slugcat(slugcat: str):
                 # read spawns, group spawns into dens (dens have a position)
                 dens = {}
                 for spawnentry in regiondata["spawns"]:
-                    if not spawnentry.strip():
+                    spawnentry = spawnentry.strip()
+                    if not spawnentry:
                         continue
 
-                    if spawnentry.startswith("("):
-                        # the slugcats for which this creature spawns, in lowercase
+                    if spawnentry.startswith("(X-"):
+                        # X- means the creature spawns for every slugcat EXCEPT the listed ones. skip if current slugcat is one of those
+                        slugcats_without_creature = [str(s.strip()).lower() for s in spawnentry[3:spawnentry.index(")")].split(",") if s.strip()]
+                        if len(slugcats_without_creature) > 0 and slugcat.lower() in slugcats_without_creature:
+                            continue
+                        spawnentry = spawnentry[spawnentry.index(")")+1:]
+                    # creature spawns for listed slugcats. skip if current slugcat isn't one of those
+                    elif spawnentry.startswith("("):
                         slugcats_with_creature = [str(s.strip()).lower() for s in spawnentry[1:spawnentry.index(")")].split(",") if s.strip()]
-                        
-                        if len(slugcats_with_creature) > 0:
-                            # X- means the creature spawns for anyone EXCEPT the listed slugcats. skip if current slugcat is one of those
-                            if slugcats_with_creature[0].startswith("X-"):
-                                slugcats_with_creature[0] = slugcats_with_creature[0].removeprefix("X-")
-                                if slugcat.lower() in slugcats_with_creature:
-                                    continue
-                            # creature spawns for listed slugcats. skip if current slugcat isn't one of those
-                            elif slugcat.lower() not in slugcats_with_creature:
-                                continue
-
+                        if len(slugcats_with_creature) > 0 and slugcat.lower() not in slugcats_with_creature:
+                            continue
                         spawnentry = spawnentry[spawnentry.index(")")+1:]
 
                     arr = spawnentry.split(" : ")
                     if arr[0] == "LINEAGE":
-                        if len(arr) < 3 :
+                        if len(arr) <= 2:
                             print("faulty spawn! missing stuff: " + spawnentry)
                             continue
                         room_name = arr[1]
