@@ -37,6 +37,11 @@ sealed class MapContent : IJsonObject
         LoadSpawns(world);
     }
 
+    private RoomEntry GetOrCreateRoomEntry(string name)
+    {
+        return rooms.TryGetValue(name, out var value) ? value : rooms[name] = new(name);
+    }
+
     private void LoadMapConfig(World world)
     {
         string path = AssetManager.ResolveFilePath(
@@ -65,10 +70,7 @@ sealed class MapContent : IJsonObject
                     connections.Add(new ConnectionEntry(split[1]));
                 }
                 else {
-                    if (!rooms.TryGetValue(sname, out RoomEntry room)) {
-                        rooms[sname] = room = new(sname);
-                    }
-                    room.ParseEntry(split[1]);
+                    GetOrCreateRoomEntry(sname).ParseEntry(split[1]);
                 }
             }
         }
@@ -107,8 +109,7 @@ sealed class MapContent : IJsonObject
 
     public void UpdateRoom(Room room)
     {
-        rooms[room.abstractRoom.name] = new(room.abstractRoom.name);
-        rooms[room.abstractRoom.name].UpdateEntry(room);
+        GetOrCreateRoomEntry(room.abstractRoom.name).UpdateEntry(room);
     }
 
     private string NameOfRegion(World world)

@@ -141,23 +141,6 @@ def do_slugcat(slugcat: str):
 
                         currentcamsize = camsize*mulfac
 
-                        need_to_save_tile = False
-                        for roomname, room in regiondata['rooms'].items():
-                            # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
-                            if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
-                                continue
-                            for i, camera in enumerate(room['camcoords']):
-                                camcoords = camera * mulfac # roomcoords + (camoffset + np.array(camera)) * mulfac # room px to zoom level
-
-                                if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
-                                    need_to_save_tile = True
-                                    break
-                            if need_to_save_tile:
-                                 break
-
-                        if not need_to_save_tile:
-                            break
-
                         # find overlapping rooms
                         for roomname, room in regiondata['rooms'].items():
                             # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
