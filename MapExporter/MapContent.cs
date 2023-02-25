@@ -12,7 +12,6 @@ sealed class MapContent : IJsonObject
 {
     readonly Dictionary<string, RoomEntry> rooms;
     readonly List<ConnectionEntry> connections;
-    readonly string name;
     readonly string acronym;
     readonly List<Color> fgcolors;
     readonly List<Color> bgcolors;
@@ -22,7 +21,6 @@ sealed class MapContent : IJsonObject
     public MapContent(World world)
     {
         acronym = world.name;
-        name = NameOfRegion(world);
 
         rooms = new Dictionary<string, RoomEntry>();
         connections = new List<ConnectionEntry>();
@@ -121,7 +119,6 @@ sealed class MapContent : IJsonObject
     {
         return new Dictionary<string, object>()
         {
-            { "name", name },
             { "acronym", acronym },
             { "rooms", rooms },
             { "connections", connections },

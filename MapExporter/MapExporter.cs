@@ -304,6 +304,11 @@ sealed class MapExporter : BaseUnityPlugin
         return Directory.CreateDirectory(Path.Combine(Custom.LegacyRootFolderDirectory(), "export", slugcat.ToLower(), region.ToLower())).FullName;
     }
 
+    string PathOfSlugcatData()
+    {
+        return Path.Combine(Path.Combine(Custom.LegacyRootFolderDirectory(), "export", "slugcats.json"));
+    }
+
     string PathOfMetadata(string slugcat, string region)
     {
         return Path.Combine(PathOfRegion(slugcat, region), "metadata.json");
@@ -329,24 +334,38 @@ sealed class MapExporter : BaseUnityPlugin
         // ok game loaded I suppose
         game.cameras[0].room.abstractRoom.Abstractize();
 
+        SlugcatFile slugcatsJson = new();
+
         Cache cache = new();
 
         if (captureSpecific != null) {
             // Capture specific region on specific slugcat
-            foreach (var step in CaptureRegion(cache, game, slugcat: new(captureSpecific.Split(';')[0]), region: captureSpecific.Split(';')[1]))
+            SlugcatStats.Name slugcat = new(captureSpecific.Split(';')[0]);
+
+            game.GetStorySession.saveStateNumber = slugcat;
+            game.GetStorySession.saveState.saveStateNumber = slugcat;
+
+            slugcatsJson.AddCurrentSlugcat(game);
+
+            foreach (var step in CaptureRegion(cache, game, slugcat, region: captureSpecific.Split(';')[1]))
                 yield return step;
         }
         else {
             // Iterate over each region on each slugcat
-            foreach (string slugcat in SlugcatStats.Name.values.entries) {
-                SlugcatStats.Name scug = new(slugcat);
+            foreach (string slugcatName in SlugcatStats.Name.values.entries) {
+                SlugcatStats.Name slugcat = new(slugcatName);
 
-                if (SlugcatStats.HiddenOrUnplayableSlugcat(scug)) {
+                if (SlugcatStats.HiddenOrUnplayableSlugcat(slugcat)) {
                     continue;
                 }
 
-                foreach (var region in SlugcatStats.getSlugcatStoryRegions(scug).Concat(SlugcatStats.getSlugcatOptionalRegions(scug))) {
-                    foreach (var step in CaptureRegion(cache, game, scug, region))
+                game.GetStorySession.saveStateNumber = slugcat;
+                game.GetStorySession.saveState.saveStateNumber = slugcat;
+
+                slugcatsJson.AddCurrentSlugcat(game);
+
+                foreach (var region in SlugcatStats.getSlugcatStoryRegions(slugcat).Concat(SlugcatStats.getSlugcatOptionalRegions(slugcat))) {
+                    foreach (var step in CaptureRegion(cache, game, slugcat, region))
                         yield return step;
                 }
             }
@@ -355,6 +374,8 @@ sealed class MapExporter : BaseUnityPlugin
         foreach (var cachedRegionMetadata in cache.metadata) {
             File.WriteAllText(PathOfMetadata("cached", cachedRegionMetadata.Key), Json.Serialize(cachedRegionMetadata.Value));
         }
+
+        File.WriteAllText(PathOfSlugcatData(), Json.Serialize(slugcatsJson));
 
         Logger.LogDebug("capture task done!");
         Application.Quit();
@@ -370,8 +391,6 @@ sealed class MapExporter : BaseUnityPlugin
         // load region
         if (game.overWorld.activeWorld == null || game.overWorld.activeWorld.region.name != region) {
             Random.InitState(0);
-            game.GetStorySession.saveStateNumber = slugcat;
-            game.GetStorySession.saveState.saveStateNumber = slugcat;
             game.overWorld.LoadWorld(region, slugcat, false);
             Logger.LogDebug($"capture task loaded {region} on {slugcat}");
         }

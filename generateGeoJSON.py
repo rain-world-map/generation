@@ -41,8 +41,6 @@ task_export_connection_features = True
 task_export_geo_features = True
 task_export_spawn_features = True
 
-regions = {}
-
 def do_slugcat(slugcat: str):
     if slugcat == "cached":
         print("Found cached regions")
@@ -63,8 +61,6 @@ def do_slugcat(slugcat: str):
         with open(os.path.join(entry.path, "metadata.json")) as metadata:
             regiondata = json.load(metadata)
         assert entry.name == str(regiondata['acronym']).lower()
-
-        regions[regiondata['acronym']] = regiondata['name']
 
         if task_export_features or task_export_tiles:
             # pre calc
@@ -563,6 +559,13 @@ def do_slugcat(slugcat: str):
     else:
         print("Slugcat done! " + slugcat)
 
+os.makedirs(output_folder, exist_ok=True)
+
+# Copy slugcats.json
+with open(os.path.join(screenshots_root, "slugcats.json"), "r") as slugcats_from:
+    with open(os.path.join(output_folder, "slugcats.json"), "w") as slugcats_to:
+        slugcats_to.write(slugcats_from.read())
+
 # Do cache first always
 do_slugcat("cached")
 
@@ -572,5 +575,4 @@ for slugcat_entry in os.scandir(screenshots_root):
         do_slugcat(slugcat_entry.name)
 
 print("Done!")
-print(json.dumps(regions))
 s = input()
