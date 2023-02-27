@@ -32,7 +32,10 @@ output_folder = "./py-output"
 
 debug_one_region = False
 optimize_geometry = True
-skip_to = None
+skip_existing_tiles = True
+skip_slugcat = "cached"
+skip_to_region = None
+skip_to_slugcat = None
 
 task_export_tiles = True
 task_export_features = True
@@ -42,13 +45,18 @@ task_export_geo_features = True
 task_export_spawn_features = True
 
 def do_slugcat(slugcat: str):
+    if skip_to_slugcat != None and slugcat != skip_to_slugcat:
+        return
+    if skip_slugcat != None and slugcat == skip_slugcat:
+        return
+
     if slugcat == "cached":
         print("Found cached regions")
     else:
         print("Found slugcat regions: " + slugcat)
 
+    st = skip_to_region
     for entry in os.scandir(os.path.join(screenshots_root, slugcat)):
-        st = skip_to
         if not entry.is_dir() or len(entry.name) != 2:
             continue
         if debug_one_region and entry.name != "SU":
@@ -128,6 +136,10 @@ def do_slugcat(slugcat: str):
                 # Going over the grid, making images
                 for tilex in range(llb_tile[0], urb_tile[0]):
                     for tiley in range(llb_tile[1], urb_tile[1]):
+
+                        if skip_existing_tiles and os.path.exists(os.path.join(target, f"{tilex}_{-1 - tiley}.png")):
+                            continue
+
                         # making a tile
                         #print(f"processing {tilex}_{tiley}")
                         current_tile = np.array([tilex,tiley])
@@ -137,9 +149,23 @@ def do_slugcat(slugcat: str):
 
                         currentcamsize = camsize*mulfac
 
+                        skip_tile = True
+                        for roomname, room in regiondata['rooms'].items():
+                            if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
+                                continue
+                            for i, camera in enumerate(room['camcoords']):
+                                camcoords = camera * mulfac
+                                if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
+                                    skip_tile = False
+                                    break
+                            if not skip_tile:
+                                break
+                        if skip_tile:
+                            continue;
+
                         # find overlapping rooms
                         for roomname, room in regiondata['rooms'].items():
-                            # skip rooms with no cameras, or rooms that don't have any screenshots (usually because they're the same as the cache)
+                            # skip rooms with no cameras
                             if room['cameras'] == None:
                                 continue
                             for i, camera in enumerate(room['camcoords']):
@@ -461,7 +487,7 @@ def do_slugcat(slugcat: str):
 
                     arr = spawnentry.split(" : ")
                     if arr[0] == "LINEAGE":
-                        if len(arr) <= 2:
+                        if len(arr) < 3:
                             print("faulty spawn! missing stuff: " + spawnentry)
                             continue
                         room_name = arr[1]
@@ -499,7 +525,7 @@ def do_slugcat(slugcat: str):
                         for creature_desc in creature_arr:
                             spawn = {}
                             spawn["is_lineage"] = False
-                            den_index,spawn["creature"], *attr = creature_desc.split("-",2)
+                            den_index,spawn["creature"], *attr = creature_desc.split("-")
 
                             if room_name  != "OFFSCREEN" and room_name not in regiondata["rooms"]:
                                 print("faulty spawn! missing room: " + room_name + " : " + creature_desc)
@@ -519,10 +545,9 @@ def do_slugcat(slugcat: str):
                                 # TODO read creature attributes
                                 if not attr[0].endswith("}"):
                                     try:
-                                        spawn["amount"] = int(attr[0].rsplit("-",1)[-1])
-                                    except: # RW_C16 : 2-Tube Worm-2h moment
-                                        print("faulty spawn! couldnt parse attribute/amount: " + room_name + " : " + creature_desc)
-                                        continue
+                                        spawn["amount"] = int(attr[0])
+                                    except:
+                                        print("amount not specified. first attribute is \"" + attr[0] + "\" in \"" + room_name + " : " + creature_desc + "\"")
                             if spawn["creature"] == "Spider 10": ## Bruh...
                                 print("faulty spawn! stupid spiders: " + room_name + " : " + creature_desc)
                                 continue ## Game doesnt parse it, so wont I
