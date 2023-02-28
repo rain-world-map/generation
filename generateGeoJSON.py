@@ -90,6 +90,7 @@ def do_slugcat(slugcat: str):
             sc_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['sccolors']))) * 255).astype(int).tolist())
 
         imaged_tiles = []
+        cached_tiles = []
 
         if task_export_tiles:
             cam_min = np.array([0,0]) 
@@ -106,12 +107,9 @@ def do_slugcat(slugcat: str):
                         cam_min = np.min([cam_min, camcoords + camoffset],0)
                         cam_max = np.max([cam_max, camcoords + camoffset + camsize],0)
     
-            print(f"got cam min {cam_min}")
-            print(f"got cam max {cam_max}")
-            dim = cam_max - cam_min
             ## Building image tiles for each zoom level
             for zoomlevel in range(0, -8, -1):
-                print(f"{slugcat}/{entry}: z = {zoomlevel}")
+                print(f"{slugcat}/{entry.name}: z = {zoomlevel}")
 
                 target = os.path.join(output_folder, slugcat, entry.name, str(zoomlevel))
                 if not os.path.exists(target):
@@ -141,21 +139,30 @@ def do_slugcat(slugcat: str):
 
                         currentcamsize = camsize*mulfac
 
-                        skip_tile = True
+                        # determine state of tile
+                        state = "missing"
                         for roomname, room in regiondata['rooms'].items():
-                            if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
+                            if room['cameras'] == None:
                                 continue
                             for i, camera in enumerate(room['camcoords']):
                                 camcoords = camera * mulfac
                                 if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
-                                    skip_tile = False
-                                    break
-                            if not skip_tile:
+                                    if os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
+                                        state = "imaged"
+                                        break
+                                    else:
+                                        state = "cached"
+                            if state == "imaged":
                                 break
-                        if skip_tile:
-                            continue;
 
-                        # find overlapping rooms
+                        if state == "missing":
+                            continue
+                        if state == "cached":
+                            cached_tiles.append([tilex, -1 - tiley, zoomlevel])
+                            continue
+
+                        # state == imaged. find the overlapping rooms and paste them
+                        imaged_tiles.append([tilex, -1 - tiley, zoomlevel])
                         for roomname, room in regiondata['rooms'].items():
                             # skip rooms with no cameras
                             if room['cameras'] == None:
@@ -187,12 +194,10 @@ def do_slugcat(slugcat: str):
                                     tile.paste(camimg, paste_offset)
                                     camimg.close()
                                 
-                        if tile != None:
-                            imaged_tiles.append([tilex, -1 - tiley, zoomlevel])
-                            # done pasting rooms
-                            tile.save(os.path.join(target, f"{tilex}_{-1 - tiley}.png"), optimize=True)
-                            tile.close()
-                            tile = None
+                        # done pasting rooms
+                        tile.save(os.path.join(target, f"{tilex}_{-1 - tiley}.png"), optimize=True)
+                        tile.close()
+                        tile = None
             print("done with tiles task")
 
         if task_export_features and slugcat != "cached":
@@ -205,6 +210,7 @@ def do_slugcat(slugcat: str):
             # Store which tiles were imaged
             if task_export_tiles:
                 features["imaged_tiles"] = imaged_tiles
+                features["cached_tiles"] = cached_tiles
 
             ## Colors
             features["highlightcolor"] = bg_col
