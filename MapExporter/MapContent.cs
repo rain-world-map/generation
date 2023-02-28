@@ -67,7 +67,7 @@ sealed class MapContent : IJsonObject
                 if (sname == "Connection") {
                     connections.Add(new ConnectionEntry(split[1]));
                 }
-                else if (!MapExporter.HiddenRoom(world, sname)) {
+                else if (!MapExporter.HiddenRoom(world.GetAbstractRoom(sname))) {
                     GetOrCreateRoomEntry(sname).ParseEntry(split[1]);
                 }
             }
@@ -108,11 +108,6 @@ sealed class MapContent : IJsonObject
     public void UpdateRoom(Room room)
     {
         GetOrCreateRoomEntry(room.abstractRoom.name).UpdateEntry(room);
-    }
-
-    private string NameOfRegion(World world)
-    {
-        return Region.GetRegionFullName(world.region.name, world.game.StoryCharacter);
     }
 
     public Dictionary<string, object> ToJson()

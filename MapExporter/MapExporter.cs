@@ -18,7 +18,7 @@ namespace MapExporter;
 sealed class MapExporter : BaseUnityPlugin
 {
     // Config
-    static readonly string captureSpecific = null; // Set to "White;SU" to load Outskirts as Survivor, or null to load all
+    static readonly string[] captureSpecific = { "White;CC", "Saint;CC" }; //"White;SU" loads Outskirts as Survivor
     static readonly bool screenshots = true;
 
     readonly Dictionary<string, int[]> blacklistedCams = new()
@@ -30,9 +30,26 @@ sealed class MapExporter : BaseUnityPlugin
 
     public static new ManualLogSource Logger;
 
-    public static bool HiddenRoom(World world, string roomName)
+    public static bool HiddenRoom(AbstractRoom room)
     {
-        return world.DisabledMapRooms.Contains(roomName) || world.game.StoryCharacter != MoreSlugcats.MoreSlugcatsEnums.SlugcatStatsName.Saint && roomName.EndsWith("SAINT");
+        if (room == null) {
+            return true;
+        }
+        if (room.world.DisabledMapRooms.Contains(room.name, System.StringComparer.InvariantCultureIgnoreCase)) {
+            Logger.LogDebug($"Room {room.world.game.StoryCharacter}/{room.name} is disabled");
+            return true;
+        }
+        if (!room.offScreenDen) {
+            if (room.connections.Length == 0) {
+                Logger.LogDebug($"Room {room.world.game.StoryCharacter}/{room.name} with no outward connections is ignored");
+                return true;
+            }
+            if (room.connections.All(r => room.world.GetAbstractRoom(r) is not AbstractRoom other || !other.connections.Contains(room.index))) {
+                Logger.LogDebug($"Room {room.world.game.StoryCharacter}/{room.name} with no inward connections is ignored");
+                return true;
+            }
+        }
+        return false;
     }
 
     public void OnEnable()
@@ -249,15 +266,8 @@ sealed class MapExporter : BaseUnityPlugin
         // Use safari mode, it's very sanitary
         manager.rainWorld.safariMode = true;
         manager.rainWorld.safariRainDisable = true;
-
-        if (captureSpecific != null) {
-            manager.rainWorld.safariSlugcat = new(captureSpecific.Split(';')[0]);
-            manager.rainWorld.safariRegion = captureSpecific.Split(';')[1];
-        }
-        else {
-            manager.rainWorld.safariSlugcat = SlugcatStats.Name.White;
-            manager.rainWorld.safariRegion = "SU";
-        }
+        manager.rainWorld.safariSlugcat = SlugcatStats.Name.White;
+        manager.rainWorld.safariRegion = "SU";
 
         orig(self, manager);
 
@@ -274,7 +284,7 @@ sealed class MapExporter : BaseUnityPlugin
         self.GetStorySession.saveState.theGlow = false;
         self.rainWorld.setup.playerGlowing = false;
 
-        // no tutorials (cause nullrefs)
+        // no tutorials
         self.GetStorySession.saveState.deathPersistentSaveData.KarmaFlowerMessage = true;
         self.GetStorySession.saveState.deathPersistentSaveData.ScavMerchantMessage = true;
         self.GetStorySession.saveState.deathPersistentSaveData.ScavTollMessage = true;
@@ -286,11 +296,9 @@ sealed class MapExporter : BaseUnityPlugin
         self.GetStorySession.saveState.deathPersistentSaveData.SMTutorialMessage = true;
         self.GetStorySession.saveState.deathPersistentSaveData.TongueTutorialMessage = true;
 
-        Logger.LogDebug("RW Ctor done, starting capture task");
-        //self.overWorld.activeWorld.activeRooms[0].abstractRoom.Abstractize();
+        Logger.LogDebug("Starting capture task");
 
         captureTask = CaptureTask(self);
-        //captureTask.MoveNext();
     }
 
     private void RainWorldGame_Update(On.RainWorldGame.orig_Update orig, RainWorldGame self)
@@ -338,17 +346,18 @@ sealed class MapExporter : BaseUnityPlugin
 
         Cache cache = new();
 
-        if (captureSpecific != null) {
-            // Capture specific region on specific slugcat
-            SlugcatStats.Name slugcat = new(captureSpecific.Split(';')[0]);
+        if (captureSpecific?.Length > 0) {
+            foreach (var capture in captureSpecific) {
+                SlugcatStats.Name slugcat = new(capture.Split(';')[0]);
 
-            game.GetStorySession.saveStateNumber = slugcat;
-            game.GetStorySession.saveState.saveStateNumber = slugcat;
+                game.GetStorySession.saveStateNumber = slugcat;
+                game.GetStorySession.saveState.saveStateNumber = slugcat;
 
-            slugcatsJson.AddCurrentSlugcat(game);
+                slugcatsJson.AddCurrentSlugcat(game);
 
-            foreach (var step in CaptureRegion(cache, game, slugcat, region: captureSpecific.Split(';')[1]))
-                yield return step;
+                foreach (var step in CaptureRegion(cache, game, region: capture.Split(';')[1]))
+                    yield return step;
+            }
         }
         else {
             // Iterate over each region on each slugcat
@@ -365,7 +374,7 @@ sealed class MapExporter : BaseUnityPlugin
                 slugcatsJson.AddCurrentSlugcat(game);
 
                 foreach (var region in SlugcatStats.getSlugcatStoryRegions(slugcat).Concat(SlugcatStats.getSlugcatOptionalRegions(slugcat))) {
-                    foreach (var step in CaptureRegion(cache, game, slugcat, region))
+                    foreach (var step in CaptureRegion(cache, game, region))
                         yield return step;
                 }
             }
@@ -386,14 +395,14 @@ sealed class MapExporter : BaseUnityPlugin
         JustMetadata = 0, Cache = 1, SpecificSlugcat = 2
     }
 
-    private System.Collections.IEnumerable CaptureRegion(Cache cache, RainWorldGame game, SlugcatStats.Name slugcat, string region)
+    private System.Collections.IEnumerable CaptureRegion(Cache cache, RainWorldGame game, string region)
     {
+        SlugcatStats.Name slugcat = game.StoryCharacter;
+
         // load region
-        if (game.overWorld.activeWorld == null || game.overWorld.activeWorld.region.name != region) {
-            Random.InitState(0);
-            game.overWorld.LoadWorld(region, slugcat, false);
-            Logger.LogDebug($"capture task loaded {region} on {slugcat}");
-        }
+        Random.InitState(0);
+        game.overWorld.LoadWorld(region, slugcat, false);
+        Logger.LogDebug($"Loaded {slugcat}/{region}");
 
         Directory.CreateDirectory(PathOfRegion(slugcat.value, region));
         Directory.CreateDirectory(PathOfRegion("cached", region));
@@ -401,7 +410,7 @@ sealed class MapExporter : BaseUnityPlugin
         List<AbstractRoom> rooms = game.world.abstractRooms.ToList();
 
         // Don't image rooms not available for this slugcat
-        rooms.RemoveAll(r => HiddenRoom(game.world, r.name));
+        rooms.RemoveAll(HiddenRoom);
 
         // Don't image offscreen dens
         rooms.RemoveAll(r => r.offScreenDen);

@@ -33,7 +33,7 @@ output_folder = "./py-output"
 debug_one_region = False
 optimize_geometry = True
 skip_existing_tiles = True
-skip_slugcat = "cached"
+skip_slugcat = None
 skip_to_region = None
 skip_to_slugcat = None
 
@@ -111,27 +111,19 @@ def do_slugcat(slugcat: str):
             dim = cam_max - cam_min
             ## Building image tiles for each zoom level
             for zoomlevel in range(0, -8, -1):
-                print(f"zoomlevel {zoomlevel}")
+                print(f"{slugcat}/{entry}: z = {zoomlevel}")
 
                 target = os.path.join(output_folder, slugcat, entry.name, str(zoomlevel))
                 if not os.path.exists(target):
                     os.makedirs(target, exist_ok=True)
 
                 mulfac = 2**zoomlevel
-                print(f"mulfac {mulfac}")
-                print(f"base image would be {dim * mulfac}")
 
                 # find bounds
                 # lower left inclusive, upper right noninclusive
                 tile_size = np.array([256,256])
                 llb_tile = np.floor(mulfac*cam_min/tile_size).astype(int)
                 urb_tile = np.ceil(mulfac*cam_max/tile_size).astype(int)
-        
-                print(f"got llb_tile {llb_tile}")
-                print(f"got urb_tile {urb_tile}")
-
-                grid_size = urb_tile - llb_tile
-                print(f"got grid_size {grid_size}")
         
                 # Going over the grid, making images
                 for tilex in range(llb_tile[0], urb_tile[0]):
