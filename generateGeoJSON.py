@@ -30,12 +30,9 @@ center_of_tile = np.array([10,10])
 screenshots_root = "./py-input"
 output_folder = "./py-output"
 
-debug_one_region = False
 optimize_geometry = True
 skip_existing_tiles = True
-skip_slugcat = None
-skip_to_region = None
-skip_to_slugcat = None
+only_slugcat = None
 
 task_export_tiles = True
 task_export_features = True
@@ -45,25 +42,17 @@ task_export_geo_features = True
 task_export_spawn_features = True
 
 def do_slugcat(slugcat: str):
-    if skip_to_slugcat != None and slugcat != skip_to_slugcat:
-        return
-    if skip_slugcat != None and slugcat == skip_slugcat:
+    if only_slugcat is not None and only_slugcat != slugcat:
         return
 
     if slugcat == "cached":
         print("Found cached regions")
     else:
         print("Found slugcat regions: " + slugcat)
-
-    st = skip_to_region
+        
     for entry in os.scandir(os.path.join(screenshots_root, slugcat)):
         if not entry.is_dir() or len(entry.name) != 2:
             continue
-        if debug_one_region and entry.name != "SU":
-            continue
-        if st != None and entry.name != st:
-            continue
-        st = None
 
         print("Found region: " + entry.name)
         with open(os.path.join(entry.path, "metadata.json")) as metadata:
@@ -142,16 +131,16 @@ def do_slugcat(slugcat: str):
                         # determine state of tile
                         state = "missing"
                         for roomname, room in regiondata['rooms'].items():
-                            if room['cameras'] == None:
+                            if room['cached'] == True:
+                                state = "cached"
+                                continue
+                            if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
                                 continue
                             for i, camera in enumerate(room['camcoords']):
                                 camcoords = camera * mulfac
                                 if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
-                                    if os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
-                                        state = "imaged"
-                                        break
-                                    else:
-                                        state = "cached"
+                                    state = "imaged"
+                                    break
                             if state == "imaged":
                                 break
 
@@ -174,7 +163,7 @@ def do_slugcat(slugcat: str):
                                     if tile == None:
                                         tile = Image.new('RGB', tuple(tile_size.tolist()), fg_col)
                                     #draw
-                                    if os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
+                                    if not room['cached']:
                                         camimg = Image.open(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + f"_{i}.png"))
                                     else:
                                         camimg = Image.open(os.path.join(screenshots_root, "cached", regiondata["acronym"], roomname + f"_{i}.png"))

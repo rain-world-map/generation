@@ -296,6 +296,9 @@ sealed class MapExporter : BaseUnityPlugin
         self.GetStorySession.saveState.deathPersistentSaveData.SMTutorialMessage = true;
         self.GetStorySession.saveState.deathPersistentSaveData.TongueTutorialMessage = true;
 
+        // allow Saint ghosts
+        self.GetStorySession.saveState.cycleNumber = 1;
+
         Logger.LogDebug("Starting capture task");
 
         captureTask = CaptureTask(self);
@@ -390,11 +393,6 @@ sealed class MapExporter : BaseUnityPlugin
         Application.Quit();
     }
 
-    enum CaptureMode
-    {
-        JustMetadata = 0, Cache = 1, SpecificSlugcat = 2
-    }
-
     private System.Collections.IEnumerable CaptureRegion(Cache cache, RainWorldGame game, string region)
     {
         SlugcatStats.Name slugcat = game.StoryCharacter;
@@ -418,30 +416,7 @@ sealed class MapExporter : BaseUnityPlugin
         MapContent mapContent = new(game.world);
 
         foreach (var room in rooms) {
-            string cacheKey = $"{region}#{room.name}";
-
-            RoomSettings cached = cache.settings.TryGetValue(cacheKey, out RoomSettings c) ? c : null;
-            RoomSettings roomSettings = Settings(room);
-
-            CaptureMode mode;
-
-            if (cached != null) {
-                if (Identical(cached, roomSettings)) {
-                    Logger.LogDebug($"CACHE HIT  | {slugcat}/{room.name}");
-                    mode = CaptureMode.JustMetadata;
-                }
-                else {
-                    Logger.LogDebug($"CACHE MISS | {slugcat}/{room.name}");
-                    mode = CaptureMode.SpecificSlugcat;
-                }
-            }
-            else {
-                Logger.LogDebug($"CACHE ADD  | {slugcat}/{room.name}");
-                cache.settings[cacheKey] = roomSettings;
-                mode = CaptureMode.Cache;
-            }
-
-            foreach (var step in CaptureRoom(cache, room, mapContent, mode))
+            foreach (var step in CaptureRoom(cache, room, mapContent))
                 yield return step;
         }
 
@@ -450,7 +425,7 @@ sealed class MapExporter : BaseUnityPlugin
         Logger.LogDebug("capture task done with " + region);
     }
 
-    private System.Collections.IEnumerable CaptureRoom(Cache cache, AbstractRoom room, MapContent mapContent, CaptureMode mode)
+    private System.Collections.IEnumerable CaptureRoom(Cache cache, AbstractRoom room, MapContent regionContent)
     {
         RainWorldGame game = room.world.game;
 
@@ -486,19 +461,25 @@ sealed class MapExporter : BaseUnityPlugin
         while (game.cameras[0].loadingRoom != null) yield return null;
         Random.InitState(0);
 
-        mapContent.UpdateRoom(room.realizedRoom);
-
-        if (mode == CaptureMode.Cache) {
-            if (!cache.metadata.TryGetValue(room.world.name, out MapContent cachedContent)) {
-                cache.metadata[room.world.name] = cachedContent = new(room.world);
-            }
-            cachedContent.UpdateRoom(room.realizedRoom);
+        if (!cache.metadata.TryGetValue(room.world.name, out MapContent cacheContent)) {
+            cache.metadata[room.world.name] = cacheContent = new(room.world);
         }
 
-        // on each camera
+        cache.TrackBoundingBox(regionContent, room.realizedRoom);
+
+        CaptureMode mode = cache.CacheResult(room.realizedRoom);
+
+        regionContent.UpdateRoom(room.realizedRoom);
+
+        if (mode == CaptureMode.CacheAdd) {
+            cacheContent.UpdateRoom(room.realizedRoom);
+        }
+
+        if (mode != CaptureMode.CacheMiss) {
+            regionContent.MarkCached(room.name);
+        }
+
         for (int i = 0; i < room.realizedRoom.cameraPositions.Length; i++) {
-            //Logger.LogDebug("capture task camera " + i);
-            //Logger.LogDebug("capture task camera has " + room.realizedRoom.cameraPositions.Length + " positions");
             // load screen
             Random.InitState(room.name.GetHashCode()); // allow for deterministic random numbers, to make rain look less garbage
             game.cameras[0].MoveCamera(i);
@@ -507,56 +488,25 @@ sealed class MapExporter : BaseUnityPlugin
             yield return null;
             yield return null; // one extra frame maybe
                                // fire!
-            if (mode != CaptureMode.JustMetadata && screenshots) {
-                string filename = PathOfScreenshot(mode == CaptureMode.Cache ? "cached" : game.StoryCharacter.value, room.world.name, room.name, i);
 
-                if (!File.Exists(filename))
+            if (mode != CaptureMode.CacheHit && screenshots) {
+                string filename = PathOfScreenshot(mode == CaptureMode.CacheAdd ? "cached" : game.StoryCharacter.value, room.world.name, room.name, i);
+
+                if (!File.Exists(filename)) {
                     ScreenCapture.CaptureScreenshot(filename);
+                }
             }
 
             // palette and colors
-            mapContent.LogPalette(game.cameras[0].currentPalette);
-            if (mode == CaptureMode.Cache) {
+            regionContent.LogPalette(game.cameras[0].currentPalette);
+            if (mode == CaptureMode.CacheAdd) {
                 cache.metadata[room.world.name].LogPalette(game.cameras[0].currentPalette);
             }
+
             yield return null; // one extra frame after ??
         }
         Random.InitState(0);
         room.Abstractize();
         yield return null;
-    }
-
-    static RoomSettings Settings(AbstractRoom r)
-    {
-        return new RoomSettings(r.name, r.world.region, false, false, r.world.game.StoryCharacter);
-    }
-    bool Identical(RoomSettings one, RoomSettings two)
-    {
-        if (ReferenceEquals(one, two)) {
-            return true;
-        }
-        if (one == null || two == null) {
-            return false;
-        }
-        bool p1 = one.isAncestor == two.isAncestor && one.isTemplate == two.isTemplate && one.clds == two.clds && one.swAmp == two.swAmp && one.swLength == two.swLength &&
-            one.wAmp == two.wAmp && one.wetTerrain == two.wetTerrain && one.eColA == two.eColA && one.eColB == two.eColB && one.grm == two.grm && one.pal == two.pal &&
-            one.wtrRflctAlpha == two.wtrRflctAlpha;
-        if (!p1) {
-            return false;
-        }
-        bool fadePalettesMatch = one.fadePalette == null && two.fadePalette == null || 
-            one.fadePalette != null && two.fadePalette != null && one.fadePalette.palette == two.fadePalette.palette && one.fadePalette.fades.SequenceEqual(two.fadePalette.fades);
-        if (!fadePalettesMatch) {
-            return false;
-        }
-        bool effectsMatch = one.effects.Select(e => e.ToString()).SequenceEqual(two.effects.Select(e => e.ToString()));
-        if (!effectsMatch) {
-            return false;
-        }
-        bool placedObjectsMatch = one.placedObjects.Select(p => p.ToString()).SequenceEqual(two.placedObjects.Select(p => p.ToString()));
-        if (!placedObjectsMatch) {
-            return false;
-        }
-        return Identical(one.parent, two.parent);
     }
 }

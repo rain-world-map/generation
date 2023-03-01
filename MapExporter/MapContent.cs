@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System.Text.RegularExpressions;
-using System;
 using System.Linq;
 using System.IO;
 using RWCustom;
@@ -38,6 +37,12 @@ sealed class MapContent : IJsonObject
     private RoomEntry GetOrCreateRoomEntry(string name)
     {
         return rooms.TryGetValue(name, out var value) ? value : rooms[name] = new(name);
+    }
+
+    public FloatRect GetBoundingBox(Room room)
+    {
+        var pos = GetOrCreateRoomEntry(room.abstractRoom.name).devPos;
+        return new(pos.x, pos.y, pos.x + room.TileWidth * 2, pos.y + room.TileHeight * 2);
     }
 
     private void LoadMapConfig(World world)
@@ -82,7 +87,7 @@ sealed class MapContent : IJsonObject
             AssimilateCreatures(File.ReadAllLines(path));
         }
         else {
-            Console.WriteLine($"!? PATH DOES NOT EXIST: {path}");
+            MapExporter.Logger.LogError($"WORLD FILE DOES NOT EXIST: {path}");
         }
     }
 
@@ -108,6 +113,11 @@ sealed class MapContent : IJsonObject
     public void UpdateRoom(Room room)
     {
         GetOrCreateRoomEntry(room.abstractRoom.name).UpdateEntry(room);
+    }
+
+    public void MarkCached(string roomName)
+    {
+        GetOrCreateRoomEntry(roomName).cached = true;
     }
 
     public Dictionary<string, object> ToJson()
@@ -169,6 +179,9 @@ sealed class MapContent : IJsonObject
         private int[,][] tiles;
         private IntVector2[] nodes;
 
+        // file should be taken from cache?
+        public bool cached;
+
         public void UpdateEntry(Room room)
         {
             cameras = room.cameraPositions;
@@ -199,6 +212,7 @@ sealed class MapContent : IJsonObject
                 { "canLayer", canLayer },
                 { "devPos", Vec2arr(devPos) },
                 { "subregion", subregion },
+                { "cached", cached },
                 { "cameras", cameras != null ? (from c in cameras select Vec2arr(c)).ToArray() : null},
                 { "nodes", nodes != null ? (from n in nodes select Intvec2arr(n)).ToArray() : null},
                 { "size", size},
