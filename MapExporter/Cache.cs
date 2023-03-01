@@ -48,6 +48,11 @@ sealed class Cache
         return CaptureMode.CacheAdd;
     }
 
+    static bool Intersects(FloatRect a, FloatRect b)
+    {
+        return a.left < b.right && a.right > b.left && a.bottom < b.top && a.top > b.bottom;
+    }
+
     static bool Identical(RoomSettings one, RoomSettings two)
     {
         if (ReferenceEquals(one, two)) {

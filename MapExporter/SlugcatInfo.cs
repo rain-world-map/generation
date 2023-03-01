@@ -28,6 +28,7 @@ sealed class Slugcat : IJsonObject
         SaveState ss = (SaveState)FormatterServices.GetUninitializedObject(typeof(SaveState));
         ss.progression = game.rainWorld.progression;
         ss.progression.rainWorld.safariMode = false;
+        ss.saveStateNumber = game.StoryCharacter;
         ss.setDenPosition();
         ss.progression.rainWorld.safariMode = true;
 
