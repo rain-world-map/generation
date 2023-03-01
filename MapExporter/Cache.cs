@@ -28,6 +28,10 @@ sealed class Cache
 
     public CaptureMode CacheResult(Room room)
     {
+        if (MapExporter.blacklistedFromCache.Contains(room.abstractRoom.name)) {
+            return CaptureMode.CacheMiss;
+        }
+
         string key = GetKey(room);
 
         if (roomSettings.TryGetValue(key, out RoomSettings existingSettings)) {

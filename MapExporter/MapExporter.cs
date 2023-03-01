@@ -18,14 +18,17 @@ namespace MapExporter;
 sealed class MapExporter : BaseUnityPlugin
 {
     // Config
-    static readonly string[] captureSpecific = { "White;CC", "Saint;CC" }; //"White;SU" loads Outskirts as Survivor
+    static readonly string[] captureSpecific = { "White;GW", "Artificer;GW" }; // For example, "White;SU" loads Outskirts as Survivor
     static readonly bool screenshots = true;
 
-    readonly Dictionary<string, int[]> blacklistedCams = new()
+    public static readonly Dictionary<string, int[]> blacklistedCams = new()
     {
         { "SU_B13", new int[]{2} }, // one indexed
         { "GW_S08", new int[]{2} }, // in vanilla only
         { "SL_C01", new int[]{4,5} }, // crescent order or will break
+    };
+    public static readonly string[] blacklistedFromCache = {
+        "CC_H01", "CC_H01SAINT"
     };
 
     public static new ManualLogSource Logger;
