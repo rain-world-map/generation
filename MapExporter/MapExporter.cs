@@ -7,6 +7,7 @@ using MonoMod.RuntimeDetour;
 using System.Collections.Generic;
 using BepInEx;
 using BepInEx.Logging;
+using System.Text.RegularExpressions;
 
 #pragma warning disable CS0618 // Type or member is obsolete
 [assembly: SecurityPermission(SecurityAction.RequestMinimum, SkipVerification = true)]
@@ -18,21 +19,19 @@ namespace MapExporter;
 sealed class MapExporter : BaseUnityPlugin
 {
     // Config
-    static readonly string[] captureSpecific = { "White;GW", "Artificer;GW" }; // For example, "White;SU" loads Outskirts as Survivor
+    static readonly string[] captureSpecific = { }; // For example, "White;SU" loads Outskirts as Survivor
     static readonly bool screenshots = true;
 
-    public static readonly Dictionary<string, int[]> blacklistedCams = new()
+    static readonly Dictionary<string, int[]> blacklistedCams = new()
     {
         { "SU_B13", new int[]{2} }, // one indexed
         { "GW_S08", new int[]{2} }, // in vanilla only
         { "SL_C01", new int[]{4,5} }, // crescent order or will break
     };
-    public static readonly string[] blacklistedFromCache = {
-        "CC_H01", "CC_H01SAINT"
-    };
 
     public static new ManualLogSource Logger;
 
+    public static bool NotHiddenRoom(AbstractRoom room) => !HiddenRoom(room);
     public static bool HiddenRoom(AbstractRoom room)
     {
         if (room == null) {
@@ -95,6 +94,7 @@ sealed class MapExporter : BaseUnityPlugin
         On.VoidSpawnGraphics.DrawSprites += VoidSpawnGraphics_DrawSprites;
         On.AntiGravity.BrokenAntiGravity.ctor += BrokenAntiGravity_ctor;
         On.GateKarmaGlyph.DrawSprites += GateKarmaGlyph_DrawSprites;
+        On.WorldLoader.ctor_RainWorldGame_Name_bool_string_Region_SetupValues += WorldLoader_ctor_RainWorldGame_Name_bool_string_Region_SetupValues;
 
         orig(self);
     }
@@ -261,6 +261,29 @@ sealed class MapExporter : BaseUnityPlugin
         return; // orig assumes a gate
     }
 
+    private void WorldLoader_ctor_RainWorldGame_Name_bool_string_Region_SetupValues(On.WorldLoader.orig_ctor_RainWorldGame_Name_bool_string_Region_SetupValues orig, WorldLoader self, RainWorldGame game, SlugcatStats.Name playerCharacter, bool singleRoomWorld, string worldName, Region region, RainWorldGame.SetupValues setupValues)
+    {
+        orig(self, game, playerCharacter, singleRoomWorld, worldName, region, setupValues);
+
+        for (int i = self.lines.Count - 1; i > 0; i--) {
+            string[] split1 = Regex.Split(self.lines[i], " : ");
+            if (split1.Length != 3 || split1[1] != "EXCLUSIVEROOM") {
+                continue;
+            }
+            string[] split2 = Regex.Split(self.lines[i - 1], " : ");
+            if (split2.Length != 3 || split2[1] != "EXCLUSIVEROOM") {
+                continue;
+            }
+            // If rooms match on both EXCLUSIVEROOM entries, but not characters, merge the characters.
+            if (split1[0] != split2[0] && split1[2] == split2[2]) {
+                string newLine = $"{split1[0]},{split2[0]} : EXCLUSIVEROOM : {split1[2]}";
+
+                self.lines[i - 1] = newLine;
+                self.lines.RemoveAt(i);
+            }
+        }
+    }
+
     #endregion fixes
 
     // start
@@ -313,24 +336,35 @@ sealed class MapExporter : BaseUnityPlugin
         captureTask.MoveNext();
     }
 
-    string PathOfRegion(string slugcat, string region)
+    static string PathOfRegion(string slugcat, string region)
     {
         return Directory.CreateDirectory(Path.Combine(Custom.LegacyRootFolderDirectory(), "export", slugcat.ToLower(), region.ToLower())).FullName;
     }
 
-    string PathOfSlugcatData()
+    static string PathOfSlugcatData()
     {
         return Path.Combine(Path.Combine(Custom.LegacyRootFolderDirectory(), "export", "slugcats.json"));
     }
 
-    string PathOfMetadata(string slugcat, string region)
+    static string PathOfMetadata(string slugcat, string region)
     {
         return Path.Combine(PathOfRegion(slugcat, region), "metadata.json");
     }
 
-    string PathOfScreenshot(string slugcat, string region, string room, int num)
+    static string PathOfScreenshot(string slugcat, string region, string room, int num)
     {
         return $"{Path.Combine(PathOfRegion(slugcat, region), room.ToLower())}_{num}.png";
+    }
+
+    private static int ScugPriority(string slugcat)
+    {
+        return slugcat switch {
+            "white" => 10,      // do White first, they have the most generic regions
+            "artificer" => 9,   // do Artificer next, they have Metropolis, Waterfront Facility, and past-GW
+            "saint" => 8,       // do Saint next for Undergrowth and Silent Construct
+            "rivulet" => 7,     // do Rivulet for The Rot
+            _ => 0              // everyone else has a mix of duplicate rooms
+        };
     }
 
     // Runs half-synchronously to the game loop, bless iters
@@ -350,8 +384,6 @@ sealed class MapExporter : BaseUnityPlugin
 
         SlugcatFile slugcatsJson = new();
 
-        Cache cache = new();
-
         if (captureSpecific?.Length > 0) {
             foreach (var capture in captureSpecific) {
                 SlugcatStats.Name slugcat = new(capture.Split(';')[0]);
@@ -361,13 +393,13 @@ sealed class MapExporter : BaseUnityPlugin
 
                 slugcatsJson.AddCurrentSlugcat(game);
 
-                foreach (var step in CaptureRegion(cache, game, region: capture.Split(';')[1]))
+                foreach (var step in CaptureRegion(game, region: capture.Split(';')[1]))
                     yield return step;
             }
         }
         else {
             // Iterate over each region on each slugcat
-            foreach (string slugcatName in SlugcatStats.Name.values.entries) {
+            foreach (string slugcatName in SlugcatStats.Name.values.entries.OrderByDescending(ScugPriority)) {
                 SlugcatStats.Name slugcat = new(slugcatName);
 
                 if (SlugcatStats.HiddenOrUnplayableSlugcat(slugcat)) {
@@ -380,14 +412,10 @@ sealed class MapExporter : BaseUnityPlugin
                 slugcatsJson.AddCurrentSlugcat(game);
 
                 foreach (var region in SlugcatStats.getSlugcatStoryRegions(slugcat).Concat(SlugcatStats.getSlugcatOptionalRegions(slugcat))) {
-                    foreach (var step in CaptureRegion(cache, game, region))
+                    foreach (var step in CaptureRegion(game, region))
                         yield return step;
                 }
             }
-        }
-
-        foreach (var cachedRegionMetadata in cache.metadata) {
-            File.WriteAllText(PathOfMetadata("cached", cachedRegionMetadata.Key), Json.Serialize(cachedRegionMetadata.Value));
         }
 
         File.WriteAllText(PathOfSlugcatData(), Json.Serialize(slugcatsJson));
@@ -396,7 +424,7 @@ sealed class MapExporter : BaseUnityPlugin
         Application.Quit();
     }
 
-    private System.Collections.IEnumerable CaptureRegion(Cache cache, RainWorldGame game, string region)
+    private System.Collections.IEnumerable CaptureRegion(RainWorldGame game, string region)
     {
         SlugcatStats.Name slugcat = game.StoryCharacter;
 
@@ -406,7 +434,8 @@ sealed class MapExporter : BaseUnityPlugin
         Logger.LogDebug($"Loaded {slugcat}/{region}");
 
         Directory.CreateDirectory(PathOfRegion(slugcat.value, region));
-        Directory.CreateDirectory(PathOfRegion("cached", region));
+
+        RegionInfo mapContent = new(game.world);
 
         List<AbstractRoom> rooms = game.world.abstractRooms.ToList();
 
@@ -416,11 +445,14 @@ sealed class MapExporter : BaseUnityPlugin
         // Don't image offscreen dens
         rooms.RemoveAll(r => r.offScreenDen);
 
-        MapContent mapContent = new(game.world);
-
-        foreach (var room in rooms) {
-            foreach (var step in CaptureRoom(cache, room, mapContent))
-                yield return step;
+        if (ReusedRooms.SlugcatRoomsToUse(slugcat.value, game.world, rooms) is string copyRooms) {
+            mapContent.copyRooms = copyRooms;
+        }
+        else {
+            foreach (var room in rooms) {
+                foreach (var step in CaptureRoom(room, mapContent))
+                    yield return step;
+            }
         }
 
         File.WriteAllText(PathOfMetadata(slugcat.value, region), Json.Serialize(mapContent));
@@ -428,7 +460,7 @@ sealed class MapExporter : BaseUnityPlugin
         Logger.LogDebug("capture task done with " + region);
     }
 
-    private System.Collections.IEnumerable CaptureRoom(Cache cache, AbstractRoom room, MapContent regionContent)
+    private System.Collections.IEnumerable CaptureRoom(AbstractRoom room, RegionInfo regionContent)
     {
         RainWorldGame game = room.world.game;
 
@@ -464,23 +496,7 @@ sealed class MapExporter : BaseUnityPlugin
         while (game.cameras[0].loadingRoom != null) yield return null;
         Random.InitState(0);
 
-        if (!cache.metadata.TryGetValue(room.world.name, out MapContent cacheContent)) {
-            cache.metadata[room.world.name] = cacheContent = new(room.world);
-        }
-
-        cache.TrackBoundingBox(regionContent, room.realizedRoom);
-
-        CaptureMode mode = cache.CacheResult(room.realizedRoom);
-
         regionContent.UpdateRoom(room.realizedRoom);
-
-        if (mode == CaptureMode.CacheAdd) {
-            cacheContent.UpdateRoom(room.realizedRoom);
-        }
-
-        if (mode != CaptureMode.CacheMiss) {
-            regionContent.MarkCached(room.name);
-        }
 
         for (int i = 0; i < room.realizedRoom.cameraPositions.Length; i++) {
             // load screen
@@ -492,8 +508,8 @@ sealed class MapExporter : BaseUnityPlugin
             yield return null; // one extra frame maybe
                                // fire!
 
-            if (mode != CaptureMode.CacheHit && screenshots) {
-                string filename = PathOfScreenshot(mode == CaptureMode.CacheAdd ? "cached" : game.StoryCharacter.value, room.world.name, room.name, i);
+            if (screenshots) {
+                string filename = PathOfScreenshot(game.StoryCharacter.value, room.world.name, room.name, i);
 
                 if (!File.Exists(filename)) {
                     ScreenCapture.CaptureScreenshot(filename);
@@ -502,9 +518,6 @@ sealed class MapExporter : BaseUnityPlugin
 
             // palette and colors
             regionContent.LogPalette(game.cameras[0].currentPalette);
-            if (mode == CaptureMode.CacheAdd) {
-                cache.metadata[room.world.name].LogPalette(game.cameras[0].currentPalette);
-            }
 
             yield return null; // one extra frame after ??
         }

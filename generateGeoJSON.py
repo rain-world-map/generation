@@ -1,3 +1,4 @@
+from copy import copy
 import os
 import json, geojson
 import statistics
@@ -45,10 +46,7 @@ def do_slugcat(slugcat: str):
     if only_slugcat is not None and only_slugcat != slugcat:
         return
 
-    if slugcat == "cached":
-        print("Found cached regions")
-    else:
-        print("Found slugcat regions: " + slugcat)
+    print("Found slugcat regions: " + slugcat)
         
     for entry in os.scandir(os.path.join(screenshots_root, slugcat)):
         if not entry.is_dir() or len(entry.name) != 2:
@@ -59,9 +57,19 @@ def do_slugcat(slugcat: str):
             regiondata = json.load(metadata)
         assert entry.name == str(regiondata['acronym']).lower()
 
+        copyingRooms = 'copyRooms' in regiondata
+        if copyingRooms:
+            with open(os.path.join(screenshots_root, regiondata['copyRooms'], entry.name, "metadata.json")) as metadata:
+                copydata = json.load(metadata)
+                rooms = copydata['rooms']
+                connections = copydata['connections']
+        else:
+            rooms = regiondata['rooms']
+            connections = regiondata['connections']
+
         if task_export_features or task_export_tiles:
             # pre calc
-            for roomname, room in regiondata['rooms'].items():
+            for roomname, room in rooms.items():
                 room['roomcoords'] = np.array(room['devPos']) * 10 # map coord to room px coords
                 if room['cameras'] == None: # ofscreen
                     regiondata['offscreen'] = room
@@ -74,19 +82,21 @@ def do_slugcat(slugcat: str):
             # because only that way we can have the full-res images being loaded with no scaling
 
             ## Find 'average foreground color'
-            fg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['fgcolors']))) * 255).astype(int).tolist())
-            bg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['bgcolors']))) * 255).astype(int).tolist())
-            sc_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['sccolors']))) * 255).astype(int).tolist())
+            if copyingRooms:
+                fg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in copydata['fgcolors']))) * 255).astype(int).tolist())
+                bg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in copydata['bgcolors']))) * 255).astype(int).tolist())
+                sc_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in copydata['sccolors']))) * 255).astype(int).tolist())
+            else:
+                fg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['fgcolors']))) * 255).astype(int).tolist())
+                bg_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['bgcolors']))) * 255).astype(int).tolist())
+                sc_col = tuple((np.array(statistics.mode(tuple(tuple(col) for col in regiondata['sccolors']))) * 255).astype(int).tolist())
 
-        imaged_tiles = []
-        cached_tiles = []
-
-        if task_export_tiles:
+        if task_export_tiles and not copyingRooms:
             cam_min = np.array([0,0]) 
             cam_max = np.array([0,0])
 
             ## Find out boundaries of the image
-            for roomname, room in regiondata['rooms'].items():
+            for roomname, room in rooms.items():
                 roomcoords = room['roomcoords']
                 if room['cameras'] == None:
                     cam_min = np.min([cam_min, roomcoords], 0)
@@ -128,31 +138,8 @@ def do_slugcat(slugcat: str):
 
                         currentcamsize = camsize*mulfac
 
-                        # determine state of tile
-                        state = "missing"
-                        for roomname, room in regiondata['rooms'].items():
-                            if room['cached'] == True:
-                                state = "cached"
-                                continue
-                            if room['cameras'] == None or not os.path.exists(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + "_0.png")):
-                                continue
-                            for i, camera in enumerate(room['camcoords']):
-                                camcoords = camera * mulfac
-                                if RectanglesOverlap(camcoords,camcoords + currentcamsize, tilecoords,tileuppercoords):
-                                    state = "imaged"
-                                    break
-                            if state == "imaged":
-                                break
-
-                        if state == "missing":
-                            continue
-                        if state == "cached":
-                            cached_tiles.append([tilex, -1 - tiley, zoomlevel])
-                            continue
-
                         # state == imaged. find the overlapping rooms and paste them
-                        imaged_tiles.append([tilex, -1 - tiley, zoomlevel])
-                        for roomname, room in regiondata['rooms'].items():
+                        for roomname, room in rooms.items():
                             # skip rooms with no cameras
                             if room['cameras'] == None:
                                 continue
@@ -163,10 +150,7 @@ def do_slugcat(slugcat: str):
                                     if tile == None:
                                         tile = Image.new('RGB', tuple(tile_size.tolist()), fg_col)
                                     #draw
-                                    if not room['cached']:
-                                        camimg = Image.open(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + f"_{i}.png"))
-                                    else:
-                                        camimg = Image.open(os.path.join(screenshots_root, "cached", regiondata["acronym"], roomname + f"_{i}.png"))
+                                    camimg = Image.open(os.path.join(screenshots_root, slugcat, regiondata["acronym"], roomname + f"_{i}.png"))
 
                                     if mulfac != 1:
                                         # scale cam
@@ -184,24 +168,22 @@ def do_slugcat(slugcat: str):
                                     camimg.close()
                                 
                         # done pasting rooms
-                        tile.save(os.path.join(target, f"{tilex}_{-1 - tiley}.png"), optimize=True)
-                        tile.close()
-                        tile = None
+                        if tile != None:
+                            tile.save(os.path.join(target, f"{tilex}_{-1 - tiley}.png"), optimize=True)
+                            tile.close()
+                            tile = None
             print("done with tiles task")
 
-        if task_export_features and slugcat != "cached":
+        if task_export_features:
             features = {}
             target = os.path.join(output_folder, slugcat, entry.name)
             if os.path.exists(os.path.join(target, "region.json")):
                 with open(os.path.join(target, "region.json"), 'r') as myin:
                     features = json.load(myin)
 
-            # Store which tiles were imaged
-            if task_export_tiles:
-                features["imaged_tiles"] = imaged_tiles
-                features["cached_tiles"] = cached_tiles
-
             ## Colors
+            if copyingRooms:
+                features["copyingrooms"] = regiondata['copyRooms']
             features["highlightcolor"] = bg_col
             features["bgcolor"] = fg_col
             features["shortcutcolor"] = sc_col
@@ -234,10 +216,10 @@ def do_slugcat(slugcat: str):
         
 
             ## Rooms
-            if task_export_room_features:
+            if task_export_room_features and not copyingRooms:
                 room_features = []
                 features["room_features"] = room_features
-                for roomname, room in regiondata['rooms'].items():
+                for roomname, room in rooms.items():
                     roomcoords = room['roomcoords']
 
                     if room['cameras'] == None:
@@ -260,20 +242,20 @@ def do_slugcat(slugcat: str):
                         }))
 
             ## Connections
-            if task_export_connection_features:
+            if task_export_connection_features and not copyingRooms:
                 connection_features = []
                 done = []
                 features["connection_features"] = connection_features
-                for conn in regiondata["connections"]:
-                    if not conn["roomA"] in regiondata['rooms'] or not conn["roomB"] in regiondata['rooms']:
+                for conn in connections:
+                    if not conn["roomA"] in rooms or not conn["roomB"] in rooms:
                         print("connection for missing rooms: " + conn["roomA"] + " " + conn["roomB"])
                         continue
                     if (conn["roomA"],conn["roomB"]) in done or (conn["roomB"],conn["roomA"]) in done:
                         print("connection repeated for rooms: " + conn["roomA"] + " " + conn["roomB"])
                         continue
 
-                    coordsA = regiondata['rooms'][conn["roomA"]]["roomcoords"] + np.array(conn["posA"])*20 + center_of_tile
-                    coordsB = regiondata['rooms'][conn["roomB"]]["roomcoords"] + np.array(conn["posB"])*20 + center_of_tile
+                    coordsA = rooms[conn["roomA"]]["roomcoords"] + np.array(conn["posA"])*20 + center_of_tile
+                    coordsB = rooms[conn["roomB"]]["roomcoords"] + np.array(conn["posB"])*20 + center_of_tile
                     dist = np.linalg.norm(coordsA - coordsB)*0.25
                     handleA = coordsA - four_directions[conn["dirA"]] * dist
                     handleB = coordsB - four_directions[conn["dirB"]] * dist
@@ -285,10 +267,10 @@ def do_slugcat(slugcat: str):
                     done.append((conn["roomA"],conn["roomB"]))
         
             ## Geometry
-            if task_export_geo_features:
+            if task_export_geo_features and not copyingRooms:
                 geo_features = []
                 features["geo_features"] = geo_features
-                for roomname, room in regiondata['rooms'].items():
+                for roomname, room in rooms.items():
                     print("processing geo for " + roomname)
                     if room['size'] is None:
                         # geo_features.append(geojson.Feature(geojson.MultiLineString([])))
@@ -479,15 +461,15 @@ def do_slugcat(slugcat: str):
                             continue
                         room_name = arr[1]
                         den_index = arr[2]
-                        if room_name != "OFFSCREEN" and room_name not in regiondata["rooms"]:
+                        if room_name != "OFFSCREEN" and room_name not in rooms:
                             print("faulty spawn! missing room: " + room_name + " : " + spawnentry)
                             continue
-                        if room_name != "OFFSCREEN" and len(regiondata["rooms"][room_name]["nodes"]) <= int(den_index):
+                        if room_name != "OFFSCREEN" and len(rooms[room_name]["nodes"]) <= int(den_index):
                             print("faulty spawn! den index over room nodes: " + spawnentry)
                             continue
                         if room_name != "OFFSCREEN":
-                            node = regiondata["rooms"][room_name]["nodes"][int(den_index)]
-                            tiles = regiondata["rooms"][room_name]["tiles"]
+                            node = rooms[room_name]["nodes"][int(den_index)]
+                            tiles = rooms[room_name]["tiles"]
                             if tiles[node[1]][node[0]][2] != 3:
                                 print("faulty spawn! not a den: " + spawnentry)
                                 continue
@@ -514,15 +496,15 @@ def do_slugcat(slugcat: str):
                             spawn["is_lineage"] = False
                             den_index,spawn["creature"], *attr = creature_desc.split("-")
 
-                            if room_name  != "OFFSCREEN" and room_name not in regiondata["rooms"]:
+                            if room_name  != "OFFSCREEN" and room_name not in rooms:
                                 print("faulty spawn! missing room: " + room_name + " : " + creature_desc)
                                 continue
-                            if room_name  != "OFFSCREEN" and len(regiondata["rooms"][room_name]["nodes"]) <= int(den_index):
+                            if room_name  != "OFFSCREEN" and len(rooms[room_name]["nodes"]) <= int(den_index):
                                 print("faulty spawn! den index over room nodes: " + room_name + " : " + creature_desc)
                                 continue
                             if room_name != "OFFSCREEN":
-                                node = regiondata["rooms"][room_name]["nodes"][int(den_index)]
-                                tiles = regiondata["rooms"][room_name]["tiles"]
+                                node = rooms[room_name]["nodes"][int(den_index)]
+                                tiles = rooms[room_name]["tiles"]
                                 if tiles[node[1]][node[0]][2] != 3:
                                     print("faulty spawn! not a den: " + spawnentry)
                                     continue
@@ -549,7 +531,7 @@ def do_slugcat(slugcat: str):
                         room = regiondata['offscreen']
                         dencoords = room['roomcoords'] + ofscreensize/2
                     else:
-                        room = regiondata["rooms"][den["room"]]
+                        room = rooms[den["room"]]
                         dencoords = room['roomcoords'] + center_of_tile + 20* np.array(room['nodes'][den["den"]])
                     spawn_features.append(geojson.Feature(
                         geometry=geojson.Point(np.array(dencoords).round().tolist()),
@@ -566,10 +548,7 @@ def do_slugcat(slugcat: str):
 
         print("Region done! " + entry.name)
 
-    if slugcat == "cached":
-        print("Cache done!")
-    else:
-        print("Slugcat done! " + slugcat)
+    print("Slugcat done! " + slugcat)
 
 os.makedirs(output_folder, exist_ok=True)
 
@@ -578,12 +557,9 @@ with open(os.path.join(screenshots_root, "slugcats.json"), "r") as slugcats_from
     with open(os.path.join(output_folder, "slugcats.json"), "w") as slugcats_to:
         slugcats_to.write(slugcats_from.read())
 
-# Do cache first always
-do_slugcat("cached")
-
 # Run thru every scug
 for slugcat_entry in os.scandir(screenshots_root):
-    if slugcat_entry.is_dir() and slugcat_entry.name != "cached":
+    if slugcat_entry.is_dir():
         do_slugcat(slugcat_entry.name)
 
 print("Done!")

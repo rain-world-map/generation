@@ -7,7 +7,7 @@ using RWCustom;
 
 namespace MapExporter;
 
-sealed class MapContent : IJsonObject
+sealed class RegionInfo : IJsonObject
 {
     readonly Dictionary<string, RoomEntry> rooms;
     readonly List<ConnectionEntry> connections;
@@ -17,7 +17,9 @@ sealed class MapContent : IJsonObject
     readonly List<Color> sccolors;
     readonly HashSet<string> worldSpawns;
 
-    public MapContent(World world)
+    public string copyRooms;
+
+    public RegionInfo(World world)
     {
         acronym = world.name;
 
@@ -37,12 +39,6 @@ sealed class MapContent : IJsonObject
     private RoomEntry GetOrCreateRoomEntry(string name)
     {
         return rooms.TryGetValue(name, out var value) ? value : rooms[name] = new(name);
-    }
-
-    public FloatRect GetBoundingBox(Room room)
-    {
-        var pos = GetOrCreateRoomEntry(room.abstractRoom.name).devPos;
-        return new(pos.x, pos.y, pos.x + room.TileWidth * 2, pos.y + room.TileHeight * 2);
     }
 
     private void LoadMapConfig(World world)
@@ -115,23 +111,23 @@ sealed class MapContent : IJsonObject
         GetOrCreateRoomEntry(room.abstractRoom.name).UpdateEntry(room);
     }
 
-    public void MarkCached(string roomName)
-    {
-        GetOrCreateRoomEntry(roomName).cached = true;
-    }
-
     public Dictionary<string, object> ToJson()
     {
-        return new Dictionary<string, object>()
-        {
-            { "acronym", acronym },
-            { "rooms", rooms },
-            { "connections", connections },
-            { "fgcolors" , (from s in fgcolors select  Vec2arr((Vector3)(Vector4)s)).ToList()},
-            { "bgcolors" , (from s in bgcolors select  Vec2arr((Vector3)(Vector4)s)).ToList()},
-            { "sccolors" , (from s in sccolors select  Vec2arr((Vector3)(Vector4)s)).ToList()},
-            { "spawns", worldSpawns.ToArray()},
+        var ret = new Dictionary<string, object> {
+            ["acronym"] = acronym,
+            ["fgcolors"] = (from s in fgcolors select Vec2arr((Vector3)(Vector4)s)).ToList(),
+            ["bgcolors"] = (from s in bgcolors select Vec2arr((Vector3)(Vector4)s)).ToList(),
+            ["sccolors"] = (from s in sccolors select Vec2arr((Vector3)(Vector4)s)).ToList()
         };
+        if (copyRooms == null) {
+            ret["rooms"] = rooms;
+            ret["connections"] = connections;
+        }
+        else {
+            ret["copyRooms"] = copyRooms;
+        }
+        ret["spawns"] = worldSpawns.ToArray();
+        return ret;
     }
 
     internal void LogPalette(RoomPalette currentPalette)
@@ -179,9 +175,6 @@ sealed class MapContent : IJsonObject
         private int[,][] tiles;
         private IntVector2[] nodes;
 
-        // file should be taken from cache?
-        public bool cached;
-
         public void UpdateEntry(Room room)
         {
             cameras = room.cameraPositions;
@@ -212,7 +205,6 @@ sealed class MapContent : IJsonObject
                 { "canLayer", canLayer },
                 { "devPos", Vec2arr(devPos) },
                 { "subregion", subregion },
-                { "cached", cached },
                 { "cameras", cameras != null ? (from c in cameras select Vec2arr(c)).ToArray() : null},
                 { "nodes", nodes != null ? (from n in nodes select Intvec2arr(n)).ToArray() : null},
                 { "size", size},
