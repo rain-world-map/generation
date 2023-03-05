@@ -34,6 +34,7 @@ output_folder = "./py-output"
 optimize_geometry = True
 skip_existing_tiles = True
 only_slugcat = None
+only_region = None
 
 task_export_tiles = True
 task_export_features = True
@@ -49,7 +50,7 @@ def do_slugcat(slugcat: str):
     print("Found slugcat regions: " + slugcat)
         
     for entry in os.scandir(os.path.join(screenshots_root, slugcat)):
-        if not entry.is_dir() or len(entry.name) != 2:
+        if not entry.is_dir() or len(entry.name) != 2 or (only_region is not None and only_region != entry.name):
             continue
 
         print("Found region: " + entry.name)
@@ -462,7 +463,7 @@ def do_slugcat(slugcat: str):
                         room_name = arr[1]
                         den_index = arr[2]
                         if room_name != "OFFSCREEN" and room_name not in rooms:
-                            print("faulty spawn! missing room: " + room_name + " : " + spawnentry)
+                            # creature is in a room that doesn't exist for this region
                             continue
                         if room_name != "OFFSCREEN" and len(rooms[room_name]["nodes"]) <= int(den_index):
                             print("faulty spawn! den index over room nodes: " + spawnentry)
@@ -482,6 +483,8 @@ def do_slugcat(slugcat: str):
                         spawn["lineage_probs"] = [creature.split("-")[-1] for creature in creature_arr]
                         spawn["creature"] = spawn["lineage"][0]
                         spawn["amount"] = 1
+                        spawn["pre_cycle"] = "{PreCycle}" in arr[3]
+                        spawn["night"] = "{Night}" in arr[3]
 
                         denkey = arr[1]+ ":" +arr[2] # room:den
                         if denkey in dens:
@@ -494,10 +497,12 @@ def do_slugcat(slugcat: str):
                         for creature_desc in creature_arr:
                             spawn = {}
                             spawn["is_lineage"] = False
+                            spawn["pre_cycle"] = False
+                            spawn["night"] = False
                             den_index,spawn["creature"], *attr = creature_desc.split("-")
 
                             if room_name  != "OFFSCREEN" and room_name not in rooms:
-                                print("faulty spawn! missing room: " + room_name + " : " + creature_desc)
+                                # creature is in a room that doesn't exist for this region
                                 continue
                             if room_name  != "OFFSCREEN" and len(rooms[room_name]["nodes"]) <= int(den_index):
                                 print("faulty spawn! den index over room nodes: " + room_name + " : " + creature_desc)
@@ -512,11 +517,16 @@ def do_slugcat(slugcat: str):
                             spawn["amount"] = 1
                             if attr:
                                 # TODO read creature attributes
-                                if not attr[0].endswith("}"):
+                                if not attr[-1].endswith("}"):
                                     try:
-                                        spawn["amount"] = int(attr[0])
+                                        spawn["amount"] = int(attr[-1])
                                     except:
-                                        print("amount not specified. first attribute is \"" + attr[0] + "\" in \"" + room_name + " : " + creature_desc + "\"")
+                                        print("amount not specified. first attribute is \"" + attr[-1] + "\" in \"" + room_name + " : " + creature_desc + "\"")
+                                if "{PreCycle}" in attr:
+                                    spawn["pre_cycle"] = True
+                                if "{Night}" in attr:
+                                    spawn["night"] = True
+
                             if spawn["creature"] == "Spider 10": ## Bruh...
                                 print("faulty spawn! stupid spiders: " + room_name + " : " + creature_desc)
                                 continue ## Game doesnt parse it, so wont I
